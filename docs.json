@@ -79,7 +79,8 @@
               "api/react/use-is-unlocked",
               "api/react/use-progress",
               "api/react/use-achievement-toast",
-              "api/react/use-unlocked-count"
+              "api/react/use-unlocked-count",
+              "api/react/use-tamper-detected"
             ]
           }
         ]

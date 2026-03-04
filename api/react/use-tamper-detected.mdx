@@ -1,0 +1,138 @@
+---
+title: useTamperDetected
+description: React hook that returns the storage key that failed integrity checking
+---
+
+Hook that returns the storage key that failed its integrity check during initialization or at runtime, or `null` if no tampering has been detected.
+
+This hook handles both pre-mount and runtime tamper detection transparently:
+- **Tamper at module load** (before React mounted) - state is pre-filled from buffered value
+- **Tamper at runtime** - state updates via subscription when integrity check fails
+
+## Signature
+
+```typescript
+function useTamperDetected(): string | null
+```
+
+## Returns
+
+<ResponseField name="tamperKey" type="string | null">
+  The storage key that failed integrity verification, or `null` if no tampering detected. Possible values include:
+  - `"unlocked"` - The unlocked achievements data was tampered with
+  - `"progress"` - The progress data was tampered with
+  - `"items"` - The collected items data was tampered with
+  - `null` - No tampering detected
+</ResponseField>
+
+## Usage
+
+### Basic tamper detection
+
+```tsx
+import { useTamperDetected } from './achievements'
+
+function TamperWarning() {
+  const tamperKey = useTamperDetected()
+
+  if (tamperKey) {
+    return (
+      <div className="alert alert-error">
+        ⚠️ Achievement data has been modified. Progress has been reset.
+      </div>
+    )
+  }
+
+  return null
+}
+```
+
+### Logging tamper events
+
+```tsx
+import { useEffect } from 'react'
+import { useTamperDetected } from './achievements'
+
+function TamperMonitor() {
+  const tamperKey = useTamperDetected()
+
+  useEffect(() => {
+    if (tamperKey) {
+      // Log to analytics
+      console.error('Tamper detected on key:', tamperKey)
+      
+      // Could also:
+      // - Send to error tracking service
+      // - Display user notification
+      // - Disable certain features
+      // - Trigger re-authentication
+    }
+  }, [tamperKey])
+
+  return null
+}
+```
+
+### Displaying detailed tamper information
+
+```tsx
+import { useTamperDetected } from './achievements'
+
+function DetailedTamperAlert() {
+  const tamperKey = useTamperDetected()
+
+  if (!tamperKey) return null
+
+  const messages = {
+    unlocked: 'Your unlocked achievements were modified in browser storage.',
+    progress: 'Your achievement progress was modified in browser storage.',
+    items: 'Your collected items were modified in browser storage.',
+  }
+
+  return (
+    <div className="tamper-alert">
+      <h3>Data Integrity Issue</h3>
+      <p>{messages[tamperKey as keyof typeof messages]}</p>
+      <p>
+        All achievement data has been reset for security. This can happen if:
+      </p>
+      <ul>
+        <li>Browser data was manually edited</li>
+        <li>A browser extension modified localStorage</li>
+        <li>The integrity hash was corrupted</li>
+      </ul>
+    </div>
+  )
+}
+```
+
+## How it works
+
+When `createAchievements()` detects tampered data (via hash mismatch), it:
+
+1. Calls your `onTamperDetected` callback (if provided)
+2. Wipes all achievement storage atomically
+3. Notifies any mounted `useTamperDetected()` hooks
+4. Buffers the tamper key for hooks that mount later
+
+The hook subscribes to the tamper event and updates when tampering is detected at runtime.
+
+## Notes
+
+<Note>
+This hook is only available from the factory-bound hooks returned by `createAchievements()`. It's not a standalone hook you import separately.
+</Note>
+
+<Warning>
+When tampering is detected, **all achievement data is wiped** to ensure a consistent clean state. The `tamperKey` tells you which field triggered the wipe, but all three keys (`unlocked`, `progress`, `items`) are cleared together.
+</Warning>
+
+<Info>
+Tamper detection is a friction layer, not cryptographic security. A determined user can still forge both the data and its hash. Use server-side validation for security-critical achievements.
+</Info>
+
+## See also
+
+- [createAchievements](/api/react/create-achievements) - Factory that returns this hook
+- [Anti-cheat](/concepts/anti-cheat) - Overview of tamper detection system
+- [Hash Adapters](/api/core/hash-adapters) - Custom hash functions for integrity checking
