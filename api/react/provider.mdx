@@ -1,0 +1,82 @@
+---
+title: AchievementsProvider
+description: React context provider for the achievement engine
+---
+
+React context provider that makes the achievement engine available to all child components via hooks.
+
+<Note>
+  If you're using `createAchievements()`, you should use the returned `Provider` component instead, which has the engine already bound.
+</Note>
+
+## Signature
+
+```typescript
+function AchievementsProvider<TId extends string>({
+  engine,
+  children,
+}: {
+  engine: AchievementEngine<TId>;
+  children: ReactNode;
+}): JSX.Element
+```
+
+## Parameters
+
+<ParamField path="engine" type="AchievementEngine<TId>" required>
+  The achievement engine instance created with `createAchievements()` from the core package.
+</ParamField>
+
+<ParamField path="children" type="ReactNode" required>
+  React children that will have access to the achievement engine via hooks.
+</ParamField>
+
+## Example
+
+### Using the factory's bound Provider (recommended)
+
+```tsx
+import { createAchievements, localStorageAdapter } from "achievements-react";
+
+const { Provider, useAchievements } = createAchievements({
+  definitions,
+  storage: localStorageAdapter("app"),
+});
+
+function App() {
+  return (
+    <Provider>
+      <Dashboard />
+    </Provider>
+  );
+}
+```
+
+### Using AchievementsProvider directly
+
+```tsx
+import {
+  createAchievements as createEngine,
+  localStorageAdapter,
+} from "achievements";
+import { AchievementsProvider } from "achievements-react";
+
+const engine = createEngine({
+  definitions,
+  storage: localStorageAdapter("app"),
+});
+
+function App() {
+  return (
+    <AchievementsProvider engine={engine}>
+      <Dashboard />
+    </AchievementsProvider>
+  );
+}
+```
+
+## Notes
+
+- All achievement hooks must be used within an `AchievementsProvider` or the factory's `Provider`
+- The provider uses React Context to distribute the engine instance
+- If hooks are used outside a provider, they will throw an error: "useEngine must be used inside AchievementsProvider"

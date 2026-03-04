@@ -1,0 +1,303 @@
+---
+title: Storage Adapters
+description: Pluggable storage backends for persisting achievement state
+---
+
+Storage adapters provide a pluggable interface for persisting achievement state. The core package includes two built-in adapters: `localStorageAdapter` for browser localStorage, and `inMemoryAdapter` for testing or ephemeral state.
+
+## StorageAdapter Interface
+
+```typescript
+type StorageAdapter = {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  remove(key: string): void;
+}
+```
+
+All storage operations use string keys and values. The engine handles serialization/deserialization internally.
+
+<ParamField path="get" type="(key: string) => string | null" required>
+  Retrieve a value by key. Returns null if not found.
+</ParamField>
+
+<ParamField path="set" type="(key: string, value: string) => void" required>
+  Store a value with the given key. Overwrites existing value.
+</ParamField>
+
+<ParamField path="remove" type="(key: string) => void" required>
+  Delete a value by key. No-op if key doesn't exist.
+</ParamField>
+
+---
+
+## localStorageAdapter
+
+```typescript
+function localStorageAdapter(prefix?: string): StorageAdapter
+```
+
+Adapter that uses browser `localStorage` for persistent storage. This is the default adapter used by `createAchievements()`.
+
+<ParamField path="prefix" type="string">
+  Optional prefix for all storage keys. Useful for namespacing when multiple achievement systems share the same localStorage.
+</ParamField>
+
+<ResponseField name="adapter" type="StorageAdapter">
+  Storage adapter instance that reads/writes from localStorage
+</ResponseField>
+
+### Example
+
+```typescript
+import { createAchievements, localStorageAdapter } from '@achievements-manager/core';
+
+const engine = createAchievements({
+  definitions,
+  storage: localStorageAdapter('game'), // Keys: "game:unlocked", "game:progress", etc.
+});
+```
+
+### Behavior
+
+- **Server-safe**: Returns null/no-ops if `window` is undefined (SSR)
+- **Error handling**: Catches and ignores storage quota errors
+- **Prefix format**: `prefix:key` (e.g., `game:unlocked`)
+- **Default prefix**: No prefix if not provided
+
+### Storage Keys
+
+With prefix `"game"`, the adapter creates:
+
+- `game:unlocked` - Unlocked achievement IDs (JSON array)
+- `game:unlocked:hash` - Integrity hash for unlocked data
+- `game:progress` - Progress values (JSON object)
+- `game:progress:hash` - Integrity hash for progress data
+- `game:items` - Collected items (JSON object of arrays)
+- `game:items:hash` - Integrity hash for items data
+
+### Implementation
+
+```typescript
+export function localStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  return {
+    get(key) {
+      if (typeof window === 'undefined') return null;
+      try {
+        return localStorage.getItem(k(key));
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.setItem(k(key), value);
+      } catch {
+        // Storage unavailable or full — silently ignore
+      }
+    },
+    remove(key) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.removeItem(k(key));
+      } catch {
+        // Storage unavailable — silently ignore
+      }
+    },
+  };
+}
+```
+
+---
+
+## inMemoryAdapter
+
+```typescript
+function inMemoryAdapter(): StorageAdapter
+```
+
+Adapter that stores data in memory using a `Map`. Data is lost on page reload. Useful for testing, demos, or temporary achievement tracking.
+
+<ResponseField name="adapter" type="StorageAdapter">
+  Storage adapter instance that stores data in memory
+</ResponseField>
+
+### Example
+
+```typescript
+import { createAchievements, inMemoryAdapter } from '@achievements-manager/core';
+
+const engine = createAchievements({
+  definitions,
+  storage: inMemoryAdapter(), // No persistence
+});
+```
+
+### Behavior
+
+- **Ephemeral**: Data is lost on page reload
+- **Isolated**: Each adapter instance has its own Map
+- **Fast**: No I/O overhead
+- **Testing-friendly**: No localStorage cleanup needed
+
+### Implementation
+
+```typescript
+export function inMemoryAdapter(): StorageAdapter {
+  const store = new Map<string, string>();
+  return {
+    get: (key) => store.get(key) ?? null,
+    set: (key, value) => {
+      store.set(key, value);
+    },
+    remove: (key) => {
+      store.delete(key);
+    },
+  };
+}
+```
+
+---
+
+## Custom Storage Adapters
+
+You can create custom adapters for other storage backends:
+
+### IndexedDB Example
+
+```typescript
+import { StorageAdapter } from '@achievements-manager/core';
+
+function indexedDBAdapter(dbName: string): StorageAdapter {
+  // Note: This is a simplified example. Production code should handle
+  // async operations properly, possibly with a synchronous cache layer.
+  
+  const cache = new Map<string, string>();
+  
+  // Initialize from IndexedDB on creation
+  // ... (omitted for brevity)
+  
+  return {
+    get: (key) => cache.get(key) ?? null,
+    set: (key, value) => {
+      cache.set(key, value);
+      // Write to IndexedDB asynchronously
+      // ... (omitted for brevity)
+    },
+    remove: (key) => {
+      cache.delete(key);
+      // Remove from IndexedDB asynchronously
+      // ... (omitted for brevity)
+    },
+  };
+}
+```
+
+### Cookie Storage Example
+
+```typescript
+import { StorageAdapter } from '@achievements-manager/core';
+
+function cookieAdapter(prefix: string): StorageAdapter {
+  return {
+    get: (key) => {
+      const name = `${prefix}_${key}=`;
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies) {
+        cookie = cookie.trim();
+        if (cookie.startsWith(name)) {
+          return decodeURIComponent(cookie.substring(name.length));
+        }
+      }
+      return null;
+    },
+    set: (key, value) => {
+      const encoded = encodeURIComponent(value);
+      document.cookie = `${prefix}_${key}=${encoded}; path=/; max-age=31536000`;
+    },
+    remove: (key) => {
+      document.cookie = `${prefix}_${key}=; path=/; max-age=0`;
+    },
+  };
+}
+```
+
+### Remote Storage Example
+
+```typescript
+import { StorageAdapter } from '@achievements-manager/core';
+
+function remoteAdapter(apiUrl: string, userId: string): StorageAdapter {
+  const cache = new Map<string, string>();
+  
+  // Hydrate cache from server on initialization
+  fetch(`${apiUrl}/achievements/${userId}`)
+    .then(res => res.json())
+    .then(data => {
+      Object.entries(data).forEach(([key, value]) => {
+        cache.set(key, value as string);
+      });
+    });
+  
+  return {
+    get: (key) => cache.get(key) ?? null,
+    set: (key, value) => {
+      cache.set(key, value);
+      // Sync to server
+      fetch(`${apiUrl}/achievements/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [key]: value }),
+      });
+    },
+    remove: (key) => {
+      cache.delete(key);
+      // Sync to server
+      fetch(`${apiUrl}/achievements/${userId}/${key}`, {
+        method: 'DELETE',
+      });
+    },
+  };
+}
+```
+
+## Best Practices
+
+### Synchronous Operations
+
+The `StorageAdapter` interface is synchronous. If your backend is async (like IndexedDB or network requests), maintain a synchronous in-memory cache and sync asynchronously in the background.
+
+### Error Handling
+
+Storage operations should be resilient:
+
+- `get()` should return `null` on errors
+- `set()` and `remove()` should fail silently
+- The engine will continue to work with in-memory state
+
+### Testing
+
+Use `inMemoryAdapter()` in tests to avoid localStorage cleanup:
+
+```typescript
+import { createAchievements, inMemoryAdapter } from '@achievements-manager/core';
+
+describe('achievements', () => {
+  it('should unlock achievements', () => {
+    const engine = createAchievements({
+      definitions,
+      storage: inMemoryAdapter(), // Clean state for each test
+    });
+    
+    engine.unlock('first-login');
+    expect(engine.isUnlocked('first-login')).toBe(true);
+  });
+});
+```
+
+## See Also
+
+- [createAchievements](/api/core/create-achievements) - Configure storage adapter
+- [Hash Adapters](/api/core/hash-adapters) - Integrity protection for stored data
+- [Types](/api/core/types) - StorageAdapter type definition

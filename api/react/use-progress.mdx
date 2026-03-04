@@ -1,0 +1,119 @@
+---
+title: useProgress
+description: Reactive hook that returns progress and max progress for an achievement
+---
+
+Returns the current progress value and maximum progress for a specific achievement. The component re-renders only when this specific achievement's progress changes.
+
+## Signature
+
+```typescript
+function useProgress<TId extends string>(
+  id: TId
+): { progress: number; max: number | undefined }
+```
+
+## Parameters
+
+<ParamField path="id" type="TId" required>
+  The ID of the achievement to track progress for.
+</ParamField>
+
+## Returns
+
+<ResponseField name="progress" type="number">
+  The current progress value (defaults to 0 if not set).
+</ResponseField>
+
+<ResponseField name="max" type="number | undefined">
+  The maximum progress value from the achievement's definition, or `undefined` if not set.
+</ResponseField>
+
+## Example
+
+```tsx
+import { useAchievements, useProgress, useIsUnlocked } from "./achievements";
+import { Button } from "./ui/button";
+import { Progress } from "./ui/progress";
+
+function ClickFrenzySection() {
+  const { incrementProgress } = useAchievements();
+  const { progress, max = 50 } = useProgress("click-frenzy");
+  const unlocked = useIsUnlocked("click-frenzy");
+
+  return (
+    <div>
+      <h2>Input Overflow</h2>
+      <p>Click {max} times to unlock</p>
+      
+      <Button
+        onClick={() => incrementProgress("click-frenzy")}
+        disabled={unlocked}
+      >
+        {unlocked ? "COMPLETE" : "CLICK"}
+        <span>{progress} / {max}</span>
+      </Button>
+      
+      <Progress value={(progress / max) * 100} />
+    </div>
+  );
+}
+```
+
+```tsx
+import { useProgress } from "./achievements";
+import { Progress } from "./ui/progress";
+
+function ProgressBar({ achievementId }: { achievementId: string }) {
+  const { progress, max } = useProgress(achievementId);
+
+  if (!max) return null;
+
+  return (
+    <div>
+      <Progress value={(progress / max) * 100} />
+      <span>{progress} / {max}</span>
+    </div>
+  );
+}
+```
+
+```tsx
+import { useIsUnlocked, useProgress } from "./achievements";
+import type { AchievementDef } from "achievements";
+
+function AchievementCard({ def }: { def: AchievementDef }) {
+  const unlocked = useIsUnlocked(def.id);
+  const { progress, max } = useProgress(def.id);
+  const secret = def.hidden && !unlocked;
+
+  return (
+    <div>
+      <h3>{secret ? "???" : def.label}</h3>
+      <p>{secret ? "Secret" : def.description}</p>
+      
+      {max !== undefined && !secret && (
+        <div>
+          <Progress value={(progress / max) * 100} />
+          <span>{progress} / {max}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Performance
+
+- **Optimized re-renders**: Only re-renders when the specific achievement's progress changes
+- Uses a selector internally to subscribe only to the relevant progress value
+- Changes to other achievements will not trigger a re-render
+
+## Notes
+
+- Must be used within an `AchievementsProvider` or the factory's `Provider`
+- The `max` value comes from the achievement definition's `maxProgress` property
+- If `max` is `undefined`, the achievement doesn't have progress tracking
+- Progress can be updated using `setProgress()` or `incrementProgress()` from `useAchievements()`
+- When progress reaches `max`, the achievement is automatically unlocked
+- The `max` value can also be set dynamically at runtime using `setMaxProgress()`

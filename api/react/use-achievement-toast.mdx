@@ -1,0 +1,106 @@
+---
+title: useAchievementToast
+description: Reactive hook for managing achievement unlock toast notifications
+---
+
+Returns a queue of achievement IDs that have been unlocked and should be displayed as toast notifications, along with a dismiss function to remove them from the queue.
+
+## Signature
+
+```typescript
+function useAchievementToast<TId extends string>(): {
+  queue: ReadonlyArray<TId>;
+  dismiss: (id: TId) => void;
+}
+```
+
+## Returns
+
+<ResponseField name="queue" type="ReadonlyArray<TId>">
+  Array of achievement IDs in the toast queue. Typically you display the first item.
+</ResponseField>
+
+<ResponseField name="dismiss" type="(id: TId) => void">
+  Function to remove an achievement from the toast queue.
+</ResponseField>
+
+## Example
+
+```tsx
+import { useEffect, useState } from "react";
+import { useAchievementToast } from "./achievements";
+import { engine } from "./achievements";
+
+const DISPLAY_MS = 3200;
+const FADE_MS = 400;
+
+function Toast() {
+  const { queue, dismiss } = useAchievementToast();
+  const [visible, setVisible] = useState(false);
+
+  const currentId = queue[0];
+  const def = currentId ? engine.getDefinition(currentId) : undefined;
+
+  useEffect(() => {
+    if (!currentId) return;
+    setVisible(true);
+
+    const fadeOut = setTimeout(() => setVisible(false), DISPLAY_MS);
+    const remove = setTimeout(() => dismiss(currentId), DISPLAY_MS + FADE_MS);
+
+    return () => {
+      clearTimeout(fadeOut);
+      clearTimeout(remove);
+    };
+  }, [currentId, dismiss]);
+
+  function close() {
+    setVisible(false);
+    if (currentId) setTimeout(() => dismiss(currentId), FADE_MS);
+  }
+
+  if (!currentId || !def) return null;
+
+  return (
+    <div className={visible ? "visible" : "hidden"}>
+      <button onClick={close}>✕</button>
+      <h3>{def.label}</h3>
+      <p>{def.description}</p>
+    </div>
+  );
+}
+```
+
+```tsx
+import { useAchievementToast, engine } from "./achievements";
+
+function SimpleToast() {
+  const { queue, dismiss } = useAchievementToast();
+  
+  if (queue.length === 0) return null;
+  
+  const id = queue[0];
+  const def = engine.getDefinition(id);
+  
+  return (
+    <div>
+      <p>Achievement Unlocked: {def?.label}</p>
+      <button onClick={() => dismiss(id)}>Dismiss</button>
+    </div>
+  );
+}
+```
+
+## Performance
+
+- **Optimized re-renders**: Only re-renders when the toast queue changes
+- The queue is a readonly array to prevent accidental mutations
+
+## Notes
+
+- Must be used within an `AchievementsProvider` or the factory's `Provider`
+- Typically you only display the first item in the queue (`queue[0]`)
+- When an achievement is unlocked, its ID is automatically added to the queue
+- Use `dismiss(id)` to remove an achievement from the queue after displaying the toast
+- The toast queue persists across page reloads (if using persistent storage like `localStorageAdapter`)
+- Common pattern: auto-dismiss after a timeout, but also provide manual dismiss option

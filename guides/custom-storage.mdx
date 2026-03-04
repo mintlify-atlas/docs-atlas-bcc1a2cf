@@ -1,0 +1,468 @@
+---
+title: Custom Storage Guide
+description: How to implement a custom StorageAdapter for achievements-manager
+---
+
+This guide shows you how to create custom storage adapters to persist achievement data to different backends like databases, IndexedDB, or remote APIs.
+
+## StorageAdapter Interface
+
+The `StorageAdapter` interface is simple and synchronous:
+
+```typescript
+type StorageAdapter = {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  remove(key: string): void;
+};
+```
+
+**Key principles:**
+- `get()` returns `null` if the key doesn't exist
+- `set()` and `remove()` are fire-and-forget (no return value)
+- All methods are synchronous
+- Values are always strings (the engine handles JSON serialization)
+
+## Storage Keys
+
+The engine uses three keys internally:
+
+- `unlocked` - Array of unlocked achievement IDs
+- `progress` - Object mapping achievement IDs to progress values
+- `items` - Object mapping achievement IDs to arrays of collected items
+
+Each key also has a corresponding `:hash` suffix for integrity verification.
+
+## Built-in Adapters
+
+The package includes three adapters you can reference:
+
+### LocalStorage Adapter
+
+```typescript
+function localStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  
+  return {
+    get(key) {
+      if (typeof window === 'undefined') return null;
+      try {
+        return localStorage.getItem(k(key));
+      } catch {
+        return null;
+      }
+    },
+    
+    set(key, value) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.setItem(k(key), value);
+      } catch {
+        // Storage unavailable or full — silently ignore
+      }
+    },
+    
+    remove(key) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.removeItem(k(key));
+      } catch {
+        // Storage unavailable — silently ignore
+      }
+    },
+  };
+}
+```
+
+**Key features:**
+- Optional prefix to namespace keys
+- SSR-safe (checks for `window`)
+- Silent error handling (quota exceeded, privacy mode, etc.)
+
+### In-Memory Adapter
+
+```typescript
+function inMemoryAdapter(): StorageAdapter {
+  const store = new Map<string, string>();
+  
+  return {
+    get: (key) => store.get(key) ?? null,
+    set: (key, value) => {
+      store.set(key, value);
+    },
+    remove: (key) => {
+      store.delete(key);
+    },
+  };
+}
+```
+
+**Use cases:**
+- Testing
+- Temporary sessions
+- Server-side rendering
+
+## Custom Adapter Examples
+
+### IndexedDB Adapter
+
+For larger datasets or offline-first apps:
+
+```typescript
+import type { StorageAdapter } from 'achievements';
+
+function indexedDBAdapter(dbName: string): StorageAdapter {
+  const cache = new Map<string, string>();
+  let db: IDBDatabase | null = null;
+
+  // Initialize DB
+  const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(dbName, 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains('achievements')) {
+        db.createObjectStore('achievements');
+      }
+    };
+  });
+
+  // Hydrate cache on init
+  dbPromise.then(async (db) => {
+    const tx = db.transaction('achievements', 'readonly');
+    const store = tx.objectStore('achievements');
+    const request = store.getAllKeys();
+    
+    return new Promise((resolve) => {
+      request.onsuccess = () => {
+        const keys = request.result as string[];
+        keys.forEach(key => {
+          const getRequest = store.get(key);
+          getRequest.onsuccess = () => {
+            cache.set(key, getRequest.result);
+          };
+        });
+        resolve(undefined);
+      };
+    });
+  });
+
+  return {
+    get(key) {
+      // Synchronous read from cache
+      return cache.get(key) ?? null;
+    },
+    
+    set(key, value) {
+      // Update cache immediately
+      cache.set(key, value);
+      
+      // Async persist to IndexedDB
+      if (db) {
+        const tx = db.transaction('achievements', 'readwrite');
+        tx.objectStore('achievements').put(value, key);
+      }
+    },
+    
+    remove(key) {
+      cache.delete(key);
+      
+      if (db) {
+        const tx = db.transaction('achievements', 'readwrite');
+        tx.objectStore('achievements').delete(key);
+      }
+    },
+  };
+}
+```
+
+**Usage:**
+
+```typescript
+import { createAchievements } from 'achievements';
+import { indexedDBAdapter } from './adapters';
+
+const engine = createAchievements({
+  definitions,
+  storage: indexedDBAdapter('my-game'),
+});
+```
+
+### Cookie Adapter
+
+For simple persistence with server-side access:
+
+```typescript
+import type { StorageAdapter } from 'achievements';
+
+function cookieAdapter(prefix: string = 'ach'): StorageAdapter {
+  function getCookie(name: string): string | null {
+    if (typeof document === 'undefined') return null;
+    
+    const match = document.cookie.match(
+      new RegExp('(^| )' + name + '=([^;]+)')
+    );
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+  
+  function setCookie(name: string, value: string, days: number = 365) {
+    if (typeof document === 'undefined') return;
+    
+    const date = new Date();
+    date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${date.toUTCString()};path=/`;
+  }
+  
+  function removeCookie(name: string) {
+    if (typeof document === 'undefined') return;
+    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+  }
+  
+  const k = (key: string) => `${prefix}_${key}`;
+  
+  return {
+    get: (key) => getCookie(k(key)),
+    set: (key, value) => setCookie(k(key), value),
+    remove: (key) => removeCookie(k(key)),
+  };
+}
+```
+
+**Limitations:**
+- 4KB size limit per cookie
+- Not suitable for large achievement lists
+
+### Remote API Adapter
+
+For server-backed achievement systems:
+
+```typescript
+import type { StorageAdapter } from 'achievements';
+
+function apiAdapter(userId: string, apiUrl: string): StorageAdapter {
+  const cache = new Map<string, string>();
+  let hydrated = false;
+
+  // Hydrate cache from API on first access
+  async function ensureHydrated() {
+    if (hydrated) return;
+    
+    try {
+      const response = await fetch(`${apiUrl}/users/${userId}/achievements`);
+      const data = await response.json();
+      
+      Object.entries(data).forEach(([key, value]) => {
+        cache.set(key, value as string);
+      });
+      
+      hydrated = true;
+    } catch (error) {
+      console.error('Failed to hydrate achievements:', error);
+    }
+  }
+
+  // Start hydration immediately
+  ensureHydrated();
+
+  return {
+    get(key) {
+      // Return cached value (may be empty if hydration incomplete)
+      return cache.get(key) ?? null;
+    },
+    
+    set(key, value) {
+      cache.set(key, value);
+      
+      // Async persist to API
+      fetch(`${apiUrl}/users/${userId}/achievements/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      }).catch(error => {
+        console.error('Failed to persist achievement:', error);
+      });
+    },
+    
+    remove(key) {
+      cache.delete(key);
+      
+      fetch(`${apiUrl}/users/${userId}/achievements/${key}`, {
+        method: 'DELETE',
+      }).catch(error => {
+        console.error('Failed to remove achievement:', error);
+      });
+    },
+  };
+}
+```
+
+**Usage:**
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  storage: apiAdapter('user-123', 'https://api.example.com'),
+});
+```
+
+**Important notes:**
+- Cache provides synchronous reads while API call is in flight
+- Consider adding debouncing for frequent writes
+- Handle authentication tokens as needed
+
+### SessionStorage Adapter
+
+For tab-scoped persistence:
+
+```typescript
+import type { StorageAdapter } from 'achievements';
+
+function sessionStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  
+  return {
+    get(key) {
+      if (typeof window === 'undefined') return null;
+      try {
+        return sessionStorage.getItem(k(key));
+      } catch {
+        return null;
+      }
+    },
+    
+    set(key, value) {
+      if (typeof window === 'undefined') return;
+      try {
+        sessionStorage.setItem(k(key), value);
+      } catch {
+        // Storage unavailable or full
+      }
+    },
+    
+    remove(key) {
+      if (typeof window === 'undefined') return;
+      try {
+        sessionStorage.removeItem(k(key));
+      } catch {}
+    },
+  };
+}
+```
+
+## Best Practices
+
+### 1. Use a Cache Layer
+
+For async storage backends, maintain a synchronous cache:
+
+```typescript
+const cache = new Map<string, string>();
+
+return {
+  get: (key) => cache.get(key) ?? null,
+  set: (key, value) => {
+    cache.set(key, value);  // Immediate
+    asyncPersist(key, value);  // Background
+  },
+  remove: (key) => {
+    cache.delete(key);
+    asyncDelete(key);
+  },
+};
+```
+
+### 2. Handle Errors Gracefully
+
+Always wrap storage operations in try-catch:
+
+```typescript
+get(key) {
+  try {
+    return someStorage.get(key);
+  } catch (error) {
+    console.warn('Storage get failed:', error);
+    return null;  // Fail gracefully
+  }
+}
+```
+
+### 3. Support SSR
+
+Check for browser APIs before using them:
+
+```typescript
+if (typeof window === 'undefined') return null;
+if (typeof localStorage === 'undefined') return null;
+```
+
+### 4. Add Prefixes
+
+Namespace your keys to avoid collisions:
+
+```typescript
+const k = (key: string) => `myapp:achievements:${key}`;
+```
+
+### 5. Consider Migration
+
+Handle version changes in your storage format:
+
+```typescript
+get(key) {
+  const value = storage.get(key);
+  if (value && needsMigration(value)) {
+    const migrated = migrate(value);
+    storage.set(key, migrated);
+    return migrated;
+  }
+  return value;
+}
+```
+
+## Testing Your Adapter
+
+Create a simple test suite:
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { myCustomAdapter } from './my-adapter';
+
+describe('CustomAdapter', () => {
+  it('returns null for missing keys', () => {
+    const adapter = myCustomAdapter();
+    expect(adapter.get('nonexistent')).toBeNull();
+  });
+  
+  it('stores and retrieves values', () => {
+    const adapter = myCustomAdapter();
+    adapter.set('test', 'value');
+    expect(adapter.get('test')).toBe('value');
+  });
+  
+  it('removes values', () => {
+    const adapter = myCustomAdapter();
+    adapter.set('test', 'value');
+    adapter.remove('test');
+    expect(adapter.get('test')).toBeNull();
+  });
+  
+  it('handles large values', () => {
+    const adapter = myCustomAdapter();
+    const large = JSON.stringify({ data: 'x'.repeat(10000) });
+    adapter.set('large', large);
+    expect(adapter.get('large')).toBe(large);
+  });
+});
+```
+
+## Next Steps
+
+- [Vanilla JS Guide](/guides/vanilla-js) - Learn core achievement system usage
+- [React Integration Guide](/guides/react-integration) - Use with React
+- [Custom Hash Guide](/guides/custom-hash) - Implement custom hash adapters

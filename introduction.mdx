@@ -1,0 +1,127 @@
+---
+title: Introduction
+description: Type-safe achievement tracking for web apps with zero runtime dependencies
+---
+
+**achievements** is a small, framework-agnostic library for adding achievements to any web application. You define your achievements once; the engine handles persistence, progress, auto-unlock, and notifications.
+
+## What is achievements-manager?
+
+achievements-manager is a type-safe achievement tracking SDK that provides a tiny core with optional React bindings. It's designed to add gamification features to your web applications with minimal overhead and maximum type safety.
+
+<Card title="Two Packages, One System" icon="box">
+  - **achievements**: Framework-agnostic core engine (zero dependencies)
+  - **achievements-react**: React 19+ bindings with hooks and factory
+</Card>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Zero Runtime Dependencies" icon="feather">
+    The core ships nothing but your own code - no external dependencies to bloat your bundle.
+  </Card>
+  
+  <Card title="Type-Safe IDs" icon="shield-check">
+    Your ID union is inferred from definitions; typos become compile errors automatically.
+  </Card>
+  
+  <Card title="Auto-Unlock" icon="unlock">
+    Progress-based achievements unlock themselves when the threshold is reached.
+  </Card>
+  
+  <Card title="Anti-Cheat" icon="lock">
+    Stored data is integrity-checked on every load (FNV-1a by default, pluggable).
+  </Card>
+  
+  <Card title="Tamper Response" icon="shield-alert">
+    Know immediately when localStorage has been edited and respond accordingly.
+  </Card>
+  
+  <Card title="Pluggable" icon="plug">
+    Swap storage (localStorage, in-memory, your own) and hash adapters at will.
+  </Card>
+  
+  <Card title="React-Ready" icon="react">
+    Fine-grained hooks that only re-render the components that need to.
+  </Card>
+  
+  <Card title="Framework-Agnostic" icon="code">
+    Use with vanilla JS, Vue, Svelte, or any framework - the core is universal.
+  </Card>
+</CardGroup>
+
+## When to Use This Library
+
+The achievements-manager library is perfect for:
+
+- **Web applications** that need gamification features
+- **Progressive web apps** with achievement systems
+- **SaaS products** tracking user milestones
+- **Educational platforms** rewarding learning progress
+- **Analytics dashboards** celebrating user engagement
+- **Developer tools** tracking usage patterns
+
+<Note>
+  If you need a lightweight, type-safe solution for tracking user achievements without pulling in heavy dependencies, this library is built for you.
+</Note>
+
+## How It Works
+
+The engine is a plain TypeScript object. No framework, no context, no magic. You configure it once with your definitions and call methods like `unlock()`, `setProgress()`, or `collectItem()` from wherever it makes sense in your app.
+
+```ts
+import { createAchievements, localStorageAdapter } from "achievements";
+
+const engine = createAchievements({
+  definitions: [
+    { id: "first-visit", label: "First Visit", description: "Open the app." },
+    { id: "click-frenzy", label: "Click Frenzy", description: "Click 50 times.", maxProgress: 50 },
+  ],
+  storage: localStorageAdapter("my-app"),
+});
+
+engine.unlock("first-visit");
+engine.incrementProgress("click-frenzy"); // auto-unlocks at 50
+```
+
+Persistence, progress tracking, anti-cheat, and toast queuing are all handled internally.
+
+## Architecture
+
+<Steps>
+  <Step title="Define Achievements">
+    Use `defineAchievements()` to create your achievement definitions with full type inference.
+  </Step>
+  
+  <Step title="Create Engine">
+    Call `createAchievements()` with your definitions, storage adapter, and optional callbacks.
+  </Step>
+  
+  <Step title="Track Progress">
+    Use methods like `unlock()`, `setProgress()`, or `collectItem()` to update achievement state.
+  </Step>
+  
+  <Step title="Respond to Events">
+    Subscribe to state changes or use React hooks for automatic UI updates.
+  </Step>
+</Steps>
+
+## Bundle Size
+
+The core library has **zero runtime dependencies** and ships as a tiny ESM module. React bindings add minimal overhead for context and hooks.
+
+<Tip>
+  For React applications, install `achievements-react` - it includes the core automatically. For other frameworks or vanilla JS, install `achievements` directly.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the library for React or vanilla JavaScript
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running with a working example in minutes
+  </Card>
+</CardGroup>

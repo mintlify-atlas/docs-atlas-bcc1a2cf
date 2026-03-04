@@ -1,0 +1,430 @@
+---
+title: Custom Hash Guide
+description: How to implement a custom HashAdapter for tamper detection in achievements-manager
+---
+
+This guide shows you how to create custom hash adapters to verify achievement data integrity and detect tampering.
+
+## HashAdapter Interface
+
+The `HashAdapter` interface is extremely simple:
+
+```typescript
+type HashAdapter = {
+  hash(data: string): string;
+};
+```
+
+**Key principles:**
+- Takes a string input, returns a string hash
+- Should be deterministic (same input = same output)
+- Synchronous operation
+- Faster is better (called on every storage write)
+
+## How It Works
+
+The achievement engine uses hash adapters for tamper detection:
+
+1. When saving data to storage, the engine:
+   - Serializes the data to a string
+   - Computes a hash of that string
+   - Stores both the data and hash (with `:hash` suffix)
+
+2. When loading data from storage, the engine:
+   - Retrieves both the data and stored hash
+   - Recomputes the hash of the data
+   - Compares the two hashes
+   - If they don't match, calls `onTamperDetected` and wipes the data
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  hash: myCustomHashAdapter(),
+  onTamperDetected: (key) => {
+    console.warn(`Tampered data detected: ${key}`);
+    // Engine automatically wipes corrupted data
+  },
+});
+```
+
+## Default Hash Adapter
+
+The package includes a default FNV-1a hash implementation:
+
+```typescript
+function fnv1aHashAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      let h = 2166136261; // FNV-1a offset basis
+      for (let i = 0; i < data.length; i++) {
+        h ^= data.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0; // FNV prime, keep 32-bit unsigned
+      }
+      return h.toString(16);
+    },
+  };
+}
+```
+
+**Properties:**
+- Fast and synchronous
+- Sufficient for detecting accidental corruption or casual tampering
+- 32-bit hash (not cryptographically secure)
+- Good default for most use cases
+
+## Custom Hash Examples
+
+### Crypto API Adapter (Async to Sync Bridge)
+
+Use the Web Crypto API with a synchronous wrapper:
+
+```typescript
+import type { HashAdapter } from 'achievements';
+
+function sha256HashAdapter(): HashAdapter {
+  // Cache to make subsequent calls synchronous
+  const cache = new Map<string, string>();
+
+  async function computeHash(data: string): Promise<string> {
+    if (cache.has(data)) {
+      return cache.get(data)!;
+    }
+
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    cache.set(data, hashHex);
+    return hashHex;
+  }
+
+  // Pre-compute hashes for empty state to avoid async issues
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    computeHash(JSON.stringify([]));
+    computeHash(JSON.stringify({}));
+  }
+
+  return {
+    hash(data: string): string {
+      // Return cached value if available
+      if (cache.has(data)) {
+        return cache.get(data)!;
+      }
+      
+      // For uncached data, compute async but return a placeholder
+      // This should rarely happen after initial hydration
+      computeHash(data);
+      
+      // Fallback to FNV-1a for immediate return
+      let h = 2166136261;
+      for (let i = 0; i < data.length; i++) {
+        h ^= data.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return h.toString(16);
+    },
+  };
+}
+```
+
+**Note:** This approach uses SHA-256 when possible but falls back to FNV-1a for synchronous operation. The cache ensures consistent hashes after initial computation.
+
+### MurmurHash3 Adapter
+
+Faster than FNV-1a, still non-cryptographic:
+
+```typescript
+import type { HashAdapter } from 'achievements';
+
+function murmur3HashAdapter(seed: number = 0): HashAdapter {
+  return {
+    hash(data: string): string {
+      let h = seed;
+      const len = data.length;
+      
+      for (let i = 0; i < len; i++) {
+        let k = data.charCodeAt(i);
+        k = Math.imul(k, 0xcc9e2d51);
+        k = (k << 15) | (k >>> 17);
+        k = Math.imul(k, 0x1b873593);
+        
+        h ^= k;
+        h = (h << 13) | (h >>> 19);
+        h = Math.imul(h, 5) + 0xe6546b64;
+      }
+      
+      h ^= len;
+      h ^= h >>> 16;
+      h = Math.imul(h, 0x85ebca6b);
+      h ^= h >>> 13;
+      h = Math.imul(h, 0xc2b2ae35);
+      h ^= h >>> 16;
+      
+      return (h >>> 0).toString(16);
+    },
+  };
+}
+```
+
+**Usage:**
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  hash: murmur3HashAdapter(),
+});
+```
+
+### CRC32 Adapter
+
+Simple checksum for detecting corruption:
+
+```typescript
+import type { HashAdapter } from 'achievements';
+
+function crc32HashAdapter(): HashAdapter {
+  // Pre-compute lookup table
+  const table: number[] = [];
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c;
+  }
+
+  return {
+    hash(data: string): string {
+      let crc = 0xFFFFFFFF;
+      
+      for (let i = 0; i < data.length; i++) {
+        const byte = data.charCodeAt(i) & 0xFF;
+        crc = (crc >>> 8) ^ table[(crc ^ byte) & 0xFF];
+      }
+      
+      return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16);
+    },
+  };
+}
+```
+
+### HMAC-Style Adapter with Secret
+
+Add a secret key for stronger protection:
+
+```typescript
+import type { HashAdapter } from 'achievements';
+
+function hmacStyleHashAdapter(secret: string): HashAdapter {
+  return {
+    hash(data: string): string {
+      // Simple HMAC-style: hash(secret + data + secret)
+      const combined = secret + data + secret;
+      
+      // Use FNV-1a on the combined string
+      let h = 2166136261;
+      for (let i = 0; i < combined.length; i++) {
+        h ^= combined.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      
+      return h.toString(16);
+    },
+  };
+}
+```
+
+**Usage:**
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  hash: hmacStyleHashAdapter('my-secret-key-12345'),
+});
+```
+
+**Warning:** This is NOT cryptographically secure. For real HMAC, use the Web Crypto API.
+
+### xxHash Adapter
+
+Extremely fast non-cryptographic hash:
+
+```typescript
+import type { HashAdapter } from 'achievements';
+
+function xxHashAdapter(seed: number = 0): HashAdapter {
+  const PRIME1 = 2654435761;
+  const PRIME2 = 2246822519;
+  const PRIME3 = 3266489917;
+  const PRIME4 = 668265263;
+  const PRIME5 = 374761393;
+
+  return {
+    hash(data: string): string {
+      let h = (seed + PRIME5) >>> 0;
+      
+      for (let i = 0; i < data.length; i++) {
+        h = (h + data.charCodeAt(i) * PRIME5) >>> 0;
+        h = Math.imul(h << 11 | h >>> 21, PRIME1);
+      }
+      
+      h ^= h >>> 15;
+      h = Math.imul(h, PRIME2);
+      h ^= h >>> 13;
+      h = Math.imul(h, PRIME3);
+      h ^= h >>> 16;
+      
+      return (h >>> 0).toString(16);
+    },
+  };
+}
+```
+
+## Choosing a Hash Algorithm
+
+### For Most Use Cases
+**Use the default `fnv1aHashAdapter()`**
+- Fast enough for achievement systems
+- Detects accidental corruption
+- Deters casual tampering
+- No dependencies
+
+### For High-Performance Needs
+**Use `xxHashAdapter()` or `murmur3HashAdapter()`**
+- Faster than FNV-1a
+- Better distribution
+- Still non-cryptographic
+
+### For Strong Tamper Protection
+**Use `sha256HashAdapter()` with caching**
+- Cryptographically secure
+- Very difficult to forge
+- Slower, but cached results help
+- Good for competitive/leaderboard systems
+
+### For Simple Corruption Detection
+**Use `crc32HashAdapter()`**
+- Very fast
+- Standard checksum
+- Only detects accidental changes
+
+## Testing Your Hash Adapter
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { myHashAdapter } from './my-hash';
+
+describe('CustomHashAdapter', () => {
+  it('returns consistent hashes', () => {
+    const adapter = myHashAdapter();
+    const hash1 = adapter.hash('test-data');
+    const hash2 = adapter.hash('test-data');
+    expect(hash1).toBe(hash2);
+  });
+  
+  it('returns different hashes for different data', () => {
+    const adapter = myHashAdapter();
+    const hash1 = adapter.hash('data-1');
+    const hash2 = adapter.hash('data-2');
+    expect(hash1).not.toBe(hash2);
+  });
+  
+  it('returns string output', () => {
+    const adapter = myHashAdapter();
+    const hash = adapter.hash('test');
+    expect(typeof hash).toBe('string');
+    expect(hash.length).toBeGreaterThan(0);
+  });
+  
+  it('handles empty strings', () => {
+    const adapter = myHashAdapter();
+    const hash = adapter.hash('');
+    expect(typeof hash).toBe('string');
+  });
+  
+  it('handles large inputs', () => {
+    const adapter = myHashAdapter();
+    const large = 'x'.repeat(100000);
+    const start = Date.now();
+    const hash = adapter.hash(large);
+    const duration = Date.now() - start;
+    
+    expect(typeof hash).toBe('string');
+    expect(duration).toBeLessThan(100); // Should be fast
+  });
+});
+```
+
+## Performance Benchmarking
+
+```typescript
+function benchmarkHash(adapter: HashAdapter, iterations: number = 10000) {
+  const testData = JSON.stringify({
+    unlocked: ['ach-1', 'ach-2', 'ach-3'],
+    progress: { 'ach-4': 50, 'ach-5': 100 },
+  });
+  
+  const start = performance.now();
+  for (let i = 0; i < iterations; i++) {
+    adapter.hash(testData);
+  }
+  const duration = performance.now() - start;
+  
+  console.log(`${iterations} hashes in ${duration.toFixed(2)}ms`);
+  console.log(`Average: ${(duration / iterations).toFixed(4)}ms per hash`);
+}
+
+// Compare adapters
+benchmarkHash(fnv1aHashAdapter());
+benchmarkHash(murmur3HashAdapter());
+benchmarkHash(xxHashAdapter());
+```
+
+## Security Considerations
+
+### Client-Side Limitations
+
+All client-side tamper detection has fundamental limits:
+- Users have full control of their browser
+- JavaScript can be modified or debugged
+- Storage can be manually edited
+- Hashes can be recomputed by modified code
+
+### Best Practices
+
+1. **Use hash adapters to detect casual tampering and accidental corruption**
+   - Good: Detecting corrupted localStorage
+   - Good: Deterring console-based cheating
+   - Bad: Preventing determined attackers
+
+2. **For critical achievements, validate server-side**
+   ```typescript
+   const engine = createAchievements({
+     definitions,
+     onUnlock: async (id) => {
+       // Verify with server
+       await fetch('/api/achievements/unlock', {
+         method: 'POST',
+         body: JSON.stringify({ achievementId: id }),
+       });
+     },
+   });
+   ```
+
+3. **Use stronger hashes for competitive features**
+   - Leaderboards
+   - Multiplayer achievements
+   - Rewards/prizes
+
+4. **Combine with other anti-cheat measures**
+   - Rate limiting
+   - Behavioral analysis
+   - Server-side validation
+
+## Next Steps
+
+- [Vanilla JS Guide](/guides/vanilla-js) - Learn core achievement system usage
+- [React Integration Guide](/guides/react-integration) - Use with React
+- [Custom Storage Guide](/guides/custom-storage) - Implement custom storage adapters

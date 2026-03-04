@@ -1,0 +1,424 @@
+---
+title: Contributing
+description: How to contribute to the achievements-manager library
+---
+
+Thank you for considering contributing to achievements-manager! This guide will help you get started with the development workflow.
+
+## Repository Structure
+
+The project is a pnpm workspace monorepo:
+
+```
+.
+├── packages/
+│   ├── core/          # achievements — framework-agnostic engine
+│   └── react/         # achievements-react — React 19+ bindings
+├── apps/
+│   └── example/       # Interactive Vite + React demo
+├── pnpm-workspace.yaml
+└── package.json
+```
+
+### Packages
+
+- **`packages/core`**: Zero-dependency achievement engine
+- **`packages/react`**: React bindings (depends on core)
+
+### Apps
+
+- **`apps/example`**: Live demo showcasing all features
+
+## Getting Started
+
+<Steps>
+  <Step title="Fork and Clone">
+    Fork the repository on GitHub, then clone your fork:
+
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/achievements-manager.git
+    cd achievements-manager
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all workspace dependencies using pnpm:
+
+    ```bash
+    pnpm install
+    ```
+
+    **Requirements:**
+    - Node.js 18+
+    - pnpm 10.26.0+ (specified in `package.json`)
+  </Step>
+
+  <Step title="Build Packages">
+    Build all packages in the workspace:
+
+    ```bash
+    pnpm build
+    ```
+
+    This compiles TypeScript and bundles packages using Rolldown.
+  </Step>
+
+  <Step title="Run the Example">
+    Start the development server for the example app:
+
+    ```bash
+    pnpm dev:example
+    ```
+
+    Visit `http://localhost:5173` to see the demo.
+  </Step>
+</Steps>
+
+## Development Commands
+
+All commands run from the repository root:
+
+### Building
+
+```bash
+# Build all packages
+pnpm build
+
+# Build runs automatically before tests
+```
+
+### Type Checking
+
+```bash
+# Type-check all packages
+pnpm typecheck
+```
+
+### Testing
+
+```bash
+# Run all tests across packages
+pnpm test
+
+# Run tests in watch mode (if supported by package)
+pnpm --filter core test:watch
+```
+
+### Linting
+
+```bash
+# Lint packages with oxlint
+pnpm lint
+
+# Auto-fix linting issues
+pnpm lint:fix
+```
+
+### Formatting
+
+```bash
+# Format code with oxfmt
+pnpm format
+
+# Check formatting without changes
+pnpm format:check
+```
+
+### Development Server
+
+```bash
+# Run the example app
+pnpm dev:example
+```
+
+## Making Changes
+
+### Workflow
+
+<Steps>
+  <Step title="Create a Branch">
+    Create a feature branch from `main`:
+
+    ```bash
+    git checkout -b feature/your-feature-name
+    # or
+    git checkout -b fix/issue-description
+    ```
+  </Step>
+
+  <Step title="Make Changes">
+    Edit source files in the appropriate package:
+
+    - Core engine: `packages/core/src/`
+    - React bindings: `packages/react/src/`
+    - Example app: `apps/example/src/`
+  </Step>
+
+  <Step title="Test Your Changes">
+    Run the full test suite:
+
+    ```bash
+    pnpm build
+    pnpm typecheck
+    pnpm test
+    pnpm lint
+    ```
+
+    Test in the example app:
+
+    ```bash
+    pnpm dev:example
+    ```
+  </Step>
+
+  <Step title="Commit Changes">
+    Write clear, descriptive commit messages:
+
+    ```bash
+    git add .
+    git commit -m "feat: add custom hash adapter support"
+    ```
+
+    **Commit message format:**
+    - `feat:` New feature
+    - `fix:` Bug fix
+    - `docs:` Documentation changes
+    - `refactor:` Code refactoring
+    - `test:` Test updates
+    - `chore:` Build/tooling changes
+  </Step>
+
+  <Step title="Push and Create PR">
+    Push to your fork and create a pull request:
+
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+
+    Open a PR on GitHub with:
+    - Clear description of changes
+    - Link to related issues
+    - Screenshots/examples if applicable
+  </Step>
+</Steps>
+
+## Code Style
+
+### TypeScript
+
+- Use strict mode
+- Prefer `type` over `interface` for public API
+- Export types alongside implementations
+- Use readonly modifiers for immutable data
+
+### React
+
+- Use function components
+- Use hooks for state/effects
+- Keep components focused and composable
+- Prefer named exports
+
+### Formatting
+
+Code is automatically formatted with `oxfmt`. Run before committing:
+
+```bash
+pnpm format
+```
+
+### Linting
+
+Code is linted with `oxlint`. Fix issues before committing:
+
+```bash
+pnpm lint:fix
+```
+
+## Testing Guidelines
+
+### Unit Tests
+
+Write tests for:
+
+- New features
+- Bug fixes
+- Edge cases
+- Public API methods
+
+Place tests alongside source files:
+
+```
+packages/core/src/
+├── engine.ts
+└── engine.test.ts
+```
+
+### Integration Tests
+
+Test interactions between modules:
+
+- Storage adapters with engine
+- React hooks with engine
+- Toast queue behavior
+
+### Example App Testing
+
+Manually test in the example app:
+
+1. Start dev server: `pnpm dev:example`
+2. Test all achievement types
+3. Verify localStorage persistence
+4. Check toast notifications
+5. Test tamper detection (edit localStorage)
+
+## Documentation
+
+### README Files
+
+Update package READMEs when changing:
+
+- Public API
+- Configuration options
+- Usage examples
+
+### Code Comments
+
+Add JSDoc comments for:
+
+- Public API methods
+- Complex logic
+- Type definitions
+
+```ts
+/**
+ * Unlocks an achievement immediately.
+ * No-op if already unlocked.
+ * 
+ * @param id - The achievement ID to unlock
+ */
+unlock(id: TId): void;
+```
+
+### Changelog
+
+Maintainers will update `CHANGELOG.md` during release. Include in your PR:
+
+- What changed
+- Why it changed
+- Migration notes (if breaking)
+
+## Pull Request Guidelines
+
+### Before Submitting
+
+- [ ] Tests pass: `pnpm test`
+- [ ] Types check: `pnpm typecheck`
+- [ ] Linting passes: `pnpm lint`
+- [ ] Code is formatted: `pnpm format`
+- [ ] Example app works: `pnpm dev:example`
+- [ ] Documentation updated
+- [ ] Commit messages follow convention
+
+### PR Description
+
+Include:
+
+1. **What**: What does this PR do?
+2. **Why**: Why is this change needed?
+3. **How**: How does it work?
+4. **Testing**: How did you test it?
+5. **Breaking**: Any breaking changes?
+
+### Review Process
+
+1. Automated checks run on PR
+2. Maintainer reviews code
+3. Address feedback
+4. Approval and merge
+
+## Release Process
+
+*For maintainers only*
+
+### Version Bumping
+
+```bash
+# Patch version (0.3.0 → 0.3.1)
+pnpm release:patch
+
+# Minor version (0.3.0 → 0.4.0)
+pnpm release:minor
+
+# Major version (0.3.0 → 1.0.0)
+pnpm release:major
+```
+
+These commands:
+
+1. Bump version in all package.json files
+2. Build packages
+3. Publish to npm
+
+### Manual Release Steps
+
+<Steps>
+  <Step title="Update Changelog">
+    Add entry to `CHANGELOG.md` with:
+    - Version number and date
+    - Features, bug fixes, breaking changes
+    - Migration notes
+  </Step>
+
+  <Step title="Update Documentation">
+    Update READMEs if API changed
+  </Step>
+
+  <Step title="Run Release Command">
+    ```bash
+    pnpm release:minor
+    ```
+  </Step>
+
+  <Step title="Create GitHub Release">
+    Create release on GitHub with:
+    - Tag (e.g. `v0.3.0`)
+    - Release notes from CHANGELOG
+    - Highlight breaking changes
+  </Step>
+
+  <Step title="Announce">
+    Announce release:
+    - Update documentation site
+    - Social media posts
+    - Discussion threads
+  </Step>
+</Steps>
+
+## Getting Help
+
+### Questions
+
+- Open a [GitHub Discussion](https://github.com/yourusername/achievements-manager/discussions)
+- Ask in issue comments
+
+### Bugs
+
+- Check existing issues first
+- Provide minimal reproduction
+- Include version numbers
+- Share error messages
+
+### Feature Requests
+
+- Open an issue with `enhancement` label
+- Describe use case
+- Provide examples
+- Discuss API design
+
+## Code of Conduct
+
+Be respectful, inclusive, and constructive. We're here to build great software together.
+
+## License
+
+By contributing, you agree your contributions will be licensed under the MIT License.

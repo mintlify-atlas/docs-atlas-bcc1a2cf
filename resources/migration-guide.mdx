@@ -1,0 +1,308 @@
+---
+title: Migration Guide
+description: Upgrade between major versions of achievements-manager
+---
+
+This guide covers breaking changes and migration steps for major version updates.
+
+## Version History
+
+### 0.3.0 (Current)
+
+Latest stable release with anti-cheat system and integrity verification.
+
+### 0.2.0
+
+Introduced item collection and runtime max progress.
+
+### 0.1.0
+
+Initial release with core achievement system and React bindings.
+
+## Migrating from 0.2.x to 0.3.0
+
+### Anti-Cheat System
+
+**What changed**: Version 0.3.0 introduces a pluggable anti-cheat system with automatic tamper detection.
+
+**Impact**: Low — the default behavior is backward compatible, but you should handle tamper events.
+
+#### Before (0.2.x)
+
+```ts
+const { engine, Provider } = createAchievements({
+  definitions,
+  storage: localStorageAdapter("my-app"),
+});
+```
+
+#### After (0.3.0)
+
+```ts
+const { engine, Provider, useTamperDetected } = createAchievements({
+  definitions,
+  storage: localStorageAdapter("my-app"),
+  // Optional: Use stronger hashing (default is FNV-1a)
+  hash: fnv1aHashAdapter(),
+  // Optional: Handle tamper detection
+  onTamperDetected: (key) => {
+    console.warn(`Tamper detected on key: ${key}`);
+    // State is automatically wiped
+  },
+});
+```
+
+#### In Your App Component
+
+```tsx
+export default function App() {
+  // NEW: Check for tamper detection before rendering
+  const tamperKey = useTamperDetected();
+
+  if (tamperKey !== null) {
+    return (
+      <div>
+        <h1>Data integrity check failed</h1>
+        <p>Storage key "{tamperKey}" was modified.</p>
+        <button onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    );
+  }
+
+  return (
+    <Provider>
+      <YourApp />
+    </Provider>
+  );
+}
+```
+
+### Custom Hash Adapters
+
+**What changed**: You can now provide custom hash functions for stronger integrity checks.
+
+#### Using Web Crypto API (HMAC-SHA-256)
+
+```ts
+import type { HashAdapter } from "achievements";
+
+const webCryptoHashAdapter = (secret: string): HashAdapter => ({
+  hash(data: string): string {
+    // Implement async hash as sync by using cached result
+    // See example implementation in packages/core/src/hash/webCrypto.ts
+    return hmacSha256Sync(data, secret);
+  },
+});
+
+const { engine, Provider } = createAchievements({
+  definitions,
+  storage: localStorageAdapter("my-app"),
+  hash: webCryptoHashAdapter("your-secret-key"),
+});
+```
+
+### State Wiping Behavior
+
+**What changed**: When tamper is detected, ALL storage keys (`unlocked`, `progress`, `items`) are now wiped atomically.
+
+**Impact**: Low — this prevents partial state corruption.
+
+**Before (0.2.x)**:
+- Items cleared individually
+- Could leave stale progress after tamper
+
+**After (0.3.0)**:
+- All three keys wiped together after hydration
+- Clean slate on tamper detection
+
+**Action required**: None — this is an internal improvement.
+
+## Migrating from 0.1.x to 0.2.0
+
+### Item Collection API
+
+**What changed**: Version 0.2.0 introduced `collectItem()` and `getItems()` for managing unique item sets.
+
+**Impact**: None if you don't use item collection. Additive change only.
+
+#### New Features
+
+```ts
+// Collect unique items (idempotent)
+engine.collectItem("explorer", "module-core");
+engine.collectItem("explorer", "module-react");
+engine.collectItem("explorer", "module-core"); // No-op, already collected
+
+// Get collected items
+const items = engine.getItems("explorer"); // ReadonlySet<string>
+console.log(items.size); // 2
+```
+
+#### Using in React
+
+```tsx
+import { useEffect, useState } from "react";
+import { engine, useAchievements } from "./achievements";
+
+function Collector() {
+  const { collectItem } = useAchievements();
+  
+  // Initialize from persisted state
+  const [collected, setCollected] = useState<Set<string>>(
+    () => new Set(engine.getItems("explorer"))
+  );
+
+  function collect(item: string) {
+    if (collected.has(item)) return;
+    collectItem("explorer", item);
+    setCollected((prev) => new Set(prev).add(item));
+  }
+
+  return (
+    <button onClick={() => collect("item-1")}>Collect</button>
+  );
+}
+```
+
+### Runtime Max Progress
+
+**What changed**: You can now update `maxProgress` at runtime with `setMaxProgress()`.
+
+**Impact**: None — existing static `maxProgress` values continue to work.
+
+#### Use Case: Server-Driven Counts
+
+```ts
+// Definition with no static maxProgress
+const definitions = defineAchievements([
+  {
+    id: "full-coverage",
+    label: "Full Coverage",
+    description: "Complete all available tasks.",
+    // No maxProgress here
+  },
+]);
+
+// Set dynamically after fetching from server
+const response = await fetch("/api/tasks");
+const tasks = await response.json();
+engine.setMaxProgress("full-coverage", tasks.length);
+```
+
+#### React Example
+
+```tsx
+import { useEffect } from "react";
+import { useAchievements } from "./achievements";
+
+function DynamicProgress({ totalNodes }: { totalNodes: number }) {
+  const { setMaxProgress } = useAchievements();
+
+  useEffect(() => {
+    setMaxProgress("full-coverage", totalNodes);
+  }, [totalNodes, setMaxProgress]);
+
+  return null;
+}
+```
+
+### Reset Behavior
+
+**What changed**: `reset()` now also clears item sets and removes the `"items"` storage key.
+
+**Impact**: None — more thorough cleanup is backward compatible.
+
+**Before (0.1.x)**:
+```ts
+engine.reset(); // Cleared unlocked + progress only
+```
+
+**After (0.2.0)**:
+```ts
+engine.reset(); // Clears unlocked + progress + items
+```
+
+### Hook Stability Fixes
+
+**What changed**: Fixed infinite render loops in `useEngineState` and `useAchievementToast`.
+
+**Impact**: None — these were internal bugs. Your code should be more stable.
+
+**Details**:
+- `useEngineState` selector no longer tracked as dependency (caused loop with array refs)
+- `useAchievementToast` dismiss callback now stable (was recreated with `.bind()` each render)
+
+## General Migration Tips
+
+### Type Safety
+
+Always derive your ID type from definitions:
+
+```ts
+export const definitions = defineAchievements([...]);
+export type AchievementId = (typeof definitions)[number]["id"];
+
+export const { engine, Provider } = createAchievements<AchievementId>({
+  definitions,
+});
+```
+
+### Storage Keys
+
+If you prefix your storage keys, versions are compatible:
+
+```ts
+// 0.1.x, 0.2.x, 0.3.x all compatible
+localStorageAdapter("my-app")
+// Keys: "my-app:unlocked", "my-app:progress", "my-app:items"
+```
+
+### Testing Migrations
+
+1. **Export current data** before upgrading:
+   ```ts
+   const backup = {
+     unlocked: Array.from(engine.getUnlocked()),
+     progress: engine.getState().progress,
+   };
+   console.log(JSON.stringify(backup));
+   ```
+
+2. **Upgrade packages**:
+   ```bash
+   pnpm add achievements-react@latest
+   # or
+   npm install achievements-react@latest
+   ```
+
+3. **Test in development** with backed-up data:
+   ```ts
+   // Restore from backup
+   backup.unlocked.forEach(id => engine.unlock(id));
+   Object.entries(backup.progress).forEach(([id, val]) => 
+     engine.setProgress(id, val)
+   );
+   ```
+
+### Breaking Change Checklist
+
+When upgrading, check:
+
+- [ ] Read the CHANGELOG for your target version
+- [ ] Update import statements if packages were restructured
+- [ ] Add tamper detection handler (0.3.0+)
+- [ ] Test with existing localStorage data
+- [ ] Update TypeScript types if engine API changed
+- [ ] Review and update tests
+
+## Getting Help
+
+If you encounter issues during migration:
+
+1. Check the [CHANGELOG](/resources/changelog) for detailed release notes
+2. Review [Examples](/resources/examples) for up-to-date patterns
+3. Open an issue on [GitHub](https://github.com/yourusername/achievements-manager) with:
+   - Current version
+   - Target version
+   - Error messages or unexpected behavior
+   - Minimal reproduction code

@@ -1,0 +1,155 @@
+---
+title: Achievements
+description: Understanding achievement definitions and how to configure them
+---
+
+## What are Achievements?
+
+Achievements are individual accomplishments that players can unlock in your application. Each achievement is defined using the `AchievementDef` type and includes metadata like the ID, label, description, and optional behavior modifiers.
+
+## Achievement Definition
+
+Achievements are defined using the `defineAchievements` helper function, which provides full type inference:
+
+```typescript
+import { defineAchievements } from 'achievements-manager';
+
+const achievements = defineAchievements([
+  {
+    id: 'first-login',
+    label: 'Welcome!',
+    description: 'Logged in for the first time',
+  },
+  {
+    id: 'complete-tutorial',
+    label: 'Quick Learner',
+    description: 'Completed the tutorial',
+    maxProgress: 5,
+  },
+] as const);
+```
+
+<Note>
+The `as const` assertion enables TypeScript to infer the exact achievement IDs as literal types, providing better type safety throughout your application.
+</Note>
+
+## Core Properties
+
+Every achievement definition includes these required properties:
+
+<ParamField path="id" type="string" required>
+  A unique identifier for the achievement. This is used to reference the achievement in all engine methods.
+</ParamField>
+
+<ParamField path="label" type="string" required>
+  The display name of the achievement shown to users.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  A description explaining how to unlock the achievement or what it represents.
+</ParamField>
+
+<ParamField path="maxProgress" type="number">
+  When provided, enables progress tracking for this achievement. The achievement auto-unlocks when progress reaches this value. See [Progress Tracking](/concepts/progress-tracking) for details.
+</ParamField>
+
+## Hidden Achievements
+
+You can control the visibility of achievements before they are unlocked using two optional properties:
+
+### The `hidden` Property
+
+When `hidden` is set to `true`, the achievement's ID, label, and description are all concealed until the player unlocks it:
+
+```typescript
+{
+  id: 'secret-ending',
+  label: 'The True Path',
+  description: 'Discovered the secret ending',
+  hidden: true, // Everything hidden until unlocked
+}
+```
+
+<ParamField path="hidden" type="boolean" default="false">
+  If `true`, the ID, label, and description are hidden until the achievement is unlocked.
+</ParamField>
+
+### The `hint` Property
+
+When `hint` is set to `true`, only the description is hidden. The ID and label remain visible, providing a clue about the achievement's existence:
+
+```typescript
+{
+  id: 'easter-egg',
+  label: 'Curious Explorer',
+  description: 'Found the hidden Easter egg',
+  hint: true, // Only description hidden until unlocked
+}
+```
+
+<ParamField path="hint" type="boolean" default="false">
+  If `true`, only the description is hidden until unlocked. The ID and label remain visible.
+</ParamField>
+
+<Warning>
+You should use either `hidden` or `hint`, not both. If both are set to `true`, the `hidden` property takes precedence.
+</Warning>
+
+## Type Definition
+
+The full TypeScript type definition from the source code:
+
+```typescript
+// From packages/core/src/types.ts
+export type AchievementDef<TId extends string> = {
+  id: TId;
+  label: string;
+  description: string;
+  /** If true, id/label/description are hidden until unlocked. Default: false */
+  hidden?: boolean;
+  /** If true, only the description is hidden until unlocked. Default: false */
+  hint?: boolean;
+  /**
+   * When provided, this achievement uses progress tracking.
+   * It auto-unlocks when progress reaches this value.
+   */
+  maxProgress?: number;
+};
+```
+
+## Using Defined Achievements
+
+Once you've defined your achievements, pass them to `createAchievements()` to create the engine:
+
+```typescript
+import { createAchievements } from 'achievements-manager';
+
+const engine = createAchievements({
+  definitions: achievements,
+});
+
+// Unlock an achievement
+engine.unlock('first-login');
+
+// Check if unlocked
+if (engine.isUnlocked('complete-tutorial')) {
+  console.log('Tutorial completed!');
+}
+```
+
+## Retrieving Definitions at Runtime
+
+You can retrieve an achievement's definition at any time using `getDefinition()`:
+
+```typescript
+const def = engine.getDefinition('first-login');
+
+if (def) {
+  console.log(def.label); // "Welcome!"
+  console.log(def.description); // "Logged in for the first time"
+}
+```
+
+<Info>
+The `getDefinition()` method returns `undefined` if no achievement exists with the provided ID.
+</Info>

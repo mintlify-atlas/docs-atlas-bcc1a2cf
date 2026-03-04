@@ -1,0 +1,393 @@
+---
+title: Storage Adapters
+description: Persist achievement data with built-in or custom storage backends
+---
+
+## Overview
+
+Storage adapters allow the achievements-manager engine to persist data to different storage backends. The library provides two built-in adapters and supports custom implementations.
+
+## StorageAdapter Interface
+
+All storage adapters implement a simple three-method interface:
+
+```typescript
+// From packages/core/src/types.ts
+export type StorageAdapter = {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  remove(key: string): void;
+};
+```
+
+<ParamField path="get" type="(key: string) => string | null">
+  Retrieves the value for the given key. Returns `null` if the key doesn't exist.
+</ParamField>
+
+<ParamField path="set" type="(key: string, value: string) => void">
+  Stores a value for the given key. Overwrites any existing value.
+</ParamField>
+
+<ParamField path="remove" type="(key: string) => void">
+  Removes the value for the given key.
+</ParamField>
+
+<Info>
+All storage values are serialized as JSON strings. The adapter only needs to handle string storage and retrieval.
+</Info>
+
+## Built-in Adapters
+
+### localStorageAdapter (Default)
+
+Persists data to the browser's `localStorage`. This is the **default adapter** if none is specified:
+
+```typescript
+import { createAchievements, localStorageAdapter } from 'achievements-manager';
+
+const engine = createAchievements({
+  definitions: achievements,
+  // localStorageAdapter is used by default, but you can specify it explicitly:
+  storage: localStorageAdapter(),
+});
+```
+
+#### Optional Prefix
+
+You can provide a prefix to namespace your storage keys:
+
+```typescript
+const engine = createAchievements({
+  definitions: achievements,
+  storage: localStorageAdapter('my-game'),
+});
+
+// Keys will be stored as:
+// 'my-game:unlocked'
+// 'my-game:progress'
+// 'my-game:items'
+```
+
+#### Implementation
+
+```typescript
+// From packages/core/src/adapters.ts:3-31
+export function localStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  return {
+    get(key) {
+      if (typeof window === 'undefined') return null;
+      try {
+        return localStorage.getItem(k(key));
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.setItem(k(key), value);
+      } catch {
+        // Storage unavailable or full — silently ignore
+      }
+    },
+    remove(key) {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.removeItem(k(key));
+      } catch {
+        // Storage unavailable — silently ignore
+      }
+    },
+  };
+}
+```
+
+<Note>
+The adapter gracefully handles server-side rendering (SSR) environments by checking for `window` and catching exceptions.
+</Note>
+
+### inMemoryAdapter
+
+Stores data in memory using a `Map`. Data is lost when the page reloads. Useful for testing or temporary sessions:
+
+```typescript
+import { createAchievements, inMemoryAdapter } from 'achievements-manager';
+
+const engine = createAchievements({
+  definitions: achievements,
+  storage: inMemoryAdapter(),
+});
+```
+
+#### Implementation
+
+```typescript
+// From packages/core/src/adapters.ts:50-61
+export function inMemoryAdapter(): StorageAdapter {
+  const store = new Map<string, string>();
+  return {
+    get: (key) => store.get(key) ?? null,
+    set: (key, value) => {
+      store.set(key, value);
+    },
+    remove: (key) => {
+      store.delete(key);
+    },
+  };
+}
+```
+
+<Warning>
+Data stored with `inMemoryAdapter` is **not persisted** across page reloads or browser sessions.
+</Warning>
+
+## Custom Storage Adapters
+
+You can create custom adapters for any storage backend by implementing the `StorageAdapter` interface.
+
+### Example: IndexedDB Adapter
+
+```typescript
+function indexedDBAdapter(dbName: string): StorageAdapter {
+  let db: IDBDatabase;
+
+  // Initialize database (simplified for example)
+  const init = async () => {
+    const request = indexedDB.open(dbName, 1);
+    return new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      request.onupgradeneeded = (e) => {
+        const db = (e.target as IDBOpenDBRequest).result;
+        db.createObjectStore('achievements');
+      };
+    });
+  };
+
+  init().then(database => { db = database; });
+
+  return {
+    get(key: string): string | null {
+      // Note: Real implementation would need to handle async
+      // This is a simplified synchronous example
+      const transaction = db.transaction(['achievements'], 'readonly');
+      const store = transaction.objectStore('achievements');
+      const request = store.get(key);
+      return request.result ?? null;
+    },
+    set(key: string, value: string): void {
+      const transaction = db.transaction(['achievements'], 'readwrite');
+      const store = transaction.objectStore('achievements');
+      store.put(value, key);
+    },
+    remove(key: string): void {
+      const transaction = db.transaction(['achievements'], 'readwrite');
+      const store = transaction.objectStore('achievements');
+      store.delete(key);
+    },
+  };
+}
+```
+
+<Note>
+The current `StorageAdapter` interface expects synchronous methods. For truly async storage (like IndexedDB), you may need to use a synchronous wrapper or propose changes to the library to support async adapters.
+</Note>
+
+### Example: Session Storage Adapter
+
+```typescript
+function sessionStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  return {
+    get(key) {
+      if (typeof window === 'undefined') return null;
+      try {
+        return sessionStorage.getItem(k(key));
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      if (typeof window === 'undefined') return;
+      try {
+        sessionStorage.setItem(k(key), value);
+      } catch {
+        // Storage unavailable or full
+      }
+    },
+    remove(key) {
+      if (typeof window === 'undefined') return;
+      try {
+        sessionStorage.removeItem(k(key));
+      } catch {
+        // Storage unavailable
+      }
+    },
+  };
+}
+```
+
+### Example: Async Storage Adapter (React Native)
+
+```typescript
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+function asyncStorageAdapter(): StorageAdapter {
+  // Cache to provide synchronous access
+  const cache = new Map<string, string>();
+  let initialized = false;
+
+  // Preload cache on first access
+  const ensureInitialized = async () => {
+    if (initialized) return;
+    const keys = await AsyncStorage.getAllKeys();
+    const entries = await AsyncStorage.multiGet(keys);
+    entries.forEach(([key, value]) => {
+      if (value !== null) cache.set(key, value);
+    });
+    initialized = true;
+  };
+
+  // Trigger initialization
+  ensureInitialized();
+
+  return {
+    get(key: string): string | null {
+      return cache.get(key) ?? null;
+    },
+    set(key: string, value: string): void {
+      cache.set(key, value);
+      // Fire and forget async write
+      AsyncStorage.setItem(key, value);
+    },
+    remove(key: string): void {
+      cache.delete(key);
+      // Fire and forget async removal
+      AsyncStorage.removeItem(key);
+    },
+  };
+}
+```
+
+## Storage Keys
+
+The engine uses three storage keys:
+
+<ParamField path="unlocked" type="string">
+  Stores the array of unlocked achievement IDs as a JSON string.
+</ParamField>
+
+<ParamField path="progress" type="string">
+  Stores the progress object as a JSON string, mapping achievement IDs to their current progress values.
+</ParamField>
+
+<ParamField path="items" type="string">
+  Stores the collected items object as a JSON string, mapping achievement IDs to arrays of collected item strings.
+</ParamField>
+
+Each key also has a corresponding `:hash` suffix for integrity checking (see [Anti-Cheat](/concepts/anti-cheat)).
+
+```typescript
+// From packages/core/src/engine.ts:21-24
+const STORAGE_KEY_UNLOCKED = 'unlocked';
+const STORAGE_KEY_PROGRESS = 'progress';
+const STORAGE_KEY_ITEMS = 'items';
+const HASH_SUFFIX = ':hash';
+```
+
+## Using Custom Adapters
+
+Simply pass your custom adapter to the `storage` config option:
+
+```typescript
+const myCustomAdapter: StorageAdapter = {
+  get(key) { /* ... */ },
+  set(key, value) { /* ... */ },
+  remove(key) { /* ... */ },
+};
+
+const engine = createAchievements({
+  definitions: achievements,
+  storage: myCustomAdapter,
+});
+```
+
+## Testing with Storage Adapters
+
+The `inMemoryAdapter` is particularly useful for testing:
+
+```typescript
+import { createAchievements, inMemoryAdapter } from 'achievements-manager';
+import { describe, it, expect } from 'vitest';
+
+describe('Achievement System', () => {
+  it('should unlock achievements', () => {
+    const engine = createAchievements({
+      definitions: [
+        { id: 'test', label: 'Test', description: 'Test achievement' },
+      ],
+      storage: inMemoryAdapter(), // Fresh storage for each test
+    });
+
+    engine.unlock('test');
+    expect(engine.isUnlocked('test')).toBe(true);
+  });
+});
+```
+
+<Info>
+Each call to `inMemoryAdapter()` creates a fresh, isolated storage instance—perfect for test isolation.
+</Info>
+
+## Best Practices
+
+1. **Use `localStorageAdapter` for web apps** unless you have specific requirements
+2. **Add a prefix** to avoid key collisions with other libraries: `localStorageAdapter('my-app')`
+3. **Use `inMemoryAdapter` for tests** to avoid test pollution
+4. **Handle errors gracefully** in custom adapters (storage quota, permissions, etc.)
+5. **Consider SSR environments** by checking for `window` or using isomorphic storage
+6. **Cache async storage** if your backend is async (like React Native's AsyncStorage)
+
+```typescript
+// Example: Production-ready adapter with error handling
+function robustLocalStorageAdapter(prefix?: string): StorageAdapter {
+  const k = (key: string) => (prefix ? `${prefix}:${key}` : key);
+  
+  const isAvailable = () => {
+    try {
+      return typeof window !== 'undefined' && 'localStorage' in window;
+    } catch {
+      return false;
+    }
+  };
+
+  return {
+    get(key) {
+      if (!isAvailable()) return null;
+      try {
+        return localStorage.getItem(k(key));
+      } catch (error) {
+        console.error('Storage get error:', error);
+        return null;
+      }
+    },
+    set(key, value) {
+      if (!isAvailable()) return;
+      try {
+        localStorage.setItem(k(key), value);
+      } catch (error) {
+        console.error('Storage set error:', error);
+      }
+    },
+    remove(key) {
+      if (!isAvailable()) return;
+      try {
+        localStorage.removeItem(k(key));
+      } catch (error) {
+        console.error('Storage remove error:', error);
+      }
+    },
+  };
+}
+```

@@ -1,0 +1,254 @@
+---
+title: Anti-Cheat
+description: Protect achievement data from tampering with hash-based integrity checking
+---
+
+## Overview
+
+The achievements-manager library includes built-in anti-cheat mechanisms to detect when stored achievement data has been tampered with. This is accomplished through **hash adapters** that compute cryptographic checksums of stored data.
+
+<Warning>
+While this system provides tamper detection for casual modification attempts (e.g., manual localStorage edits), it is **not cryptographically secure** against determined attackers. For security-critical applications, validate achievements server-side.
+</Warning>
+
+## How It Works
+
+Every time data is persisted to storage, the engine:
+
+1. Serializes the data to a string
+2. Computes a hash of that string using the hash adapter
+3. Stores both the data and its hash (with a `:hash` suffix)
+
+When loading data:
+
+1. Retrieves both the data and its stored hash
+2. Recomputes the hash of the retrieved data
+3. Compares the computed hash with the stored hash
+4. If they don't match, tamper is detected
+
+## Hash Adapters
+
+A hash adapter is a simple interface that provides a `hash()` function:
+
+```typescript
+// From packages/core/src/types.ts
+export type HashAdapter = {
+  hash(data: string): string;
+};
+```
+
+### Default Adapter: FNV-1a
+
+By default, the engine uses the `fnv1aHashAdapter`, which implements the FNV-1a (Fowler-Noll-Vo) 32-bit hash algorithm:
+
+```typescript
+// From packages/core/src/adapters.ts:37-48
+export function fnv1aHashAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      let h = 2166136261; // FNV-1a offset basis
+      for (let i = 0; i < data.length; i++) {
+        h ^= data.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0; // FNV prime, keep 32-bit unsigned
+      }
+      return h.toString(16);
+    },
+  };
+}
+```
+
+<Info>
+FNV-1a is chosen for its speed and simplicity. It's fast enough to run synchronously in the browser and provides sufficient tamper detection for most use cases.
+</Info>
+
+## Integrity Checking
+
+The engine verifies data integrity both during initialization and before writes:
+
+### On Initialization (Hydration)
+
+When the engine loads, it checks the integrity of all three storage keys:
+- `unlocked` - The set of unlocked achievement IDs
+- `progress` - The progress values for each achievement
+- `items` - The collected items for each achievement
+
+```typescript
+// From packages/core/src/engine.ts:51-59
+function verifyStoredIntegrity(key: string): boolean {
+  const data = storage.get(key);
+  const storedHash = storage.get(key + HASH_SUFFIX);
+  // No hash stored yet (backward-compatible) — trust the data
+  if (storedHash === null) return true;
+  // Hash exists but data was removed — something is wrong
+  if (data === null) return false;
+  return storedHash === computeHash(data);
+}
+```
+
+### Atomic Wipe on Tamper Detection
+
+If **any** field fails integrity checking during initialization, **all** storage is wiped to prevent partial/inconsistent state:
+
+```typescript
+// From packages/core/src/engine.ts:113-127
+if (unlockedTampered || progressTampered || itemsTampered) {
+  removeData(STORAGE_KEY_UNLOCKED);
+  removeData(STORAGE_KEY_PROGRESS);
+  removeData(STORAGE_KEY_ITEMS);
+  unlockedIds = new Set<TId>();
+  progress = {};
+  items = {};
+} else {
+  unlockedIds = hydratedUnlocked;
+  progress = hydratedProgress;
+  items = hydratedItems;
+}
+```
+
+<Note>
+This ensures that after a tamper is detected, the next load starts from a fully consistent clean slate—no partial state like items present but progress showing stale values.
+</Note>
+
+### Before Writes
+
+Before writing new data, the engine verifies that the existing stored data hasn't been tampered with:
+
+```typescript
+// From packages/core/src/engine.ts:164-168
+if (!verifyStoredIntegrity(STORAGE_KEY_UNLOCKED)) {
+  config.onTamperDetected?.(STORAGE_KEY_UNLOCKED);
+  // persistUnlocked() below will overwrite tampered storage with authoritative in-memory state
+}
+```
+
+## Tamper Detection Callback
+
+You can listen for tamper detection events using the `onTamperDetected` callback:
+
+```typescript
+const engine = createAchievements({
+  definitions: achievements,
+  onTamperDetected: (key) => {
+    console.warn(`Tamper detected on storage key: ${key}`);
+    // Log to analytics, show warning to user, etc.
+  },
+});
+```
+
+### Configuration Type
+
+```typescript
+// From packages/core/src/engine.ts:10-19
+export type Config<TId extends string> = {
+  definitions: ReadonlyArray<AchievementDef<TId>>;
+  storage?: StorageAdapter;
+  /** Pluggable hash function for tamper detection. Defaults to FNV-1a (32-bit). */
+  hash?: HashAdapter;
+  /** Called synchronously immediately after an achievement is unlocked. */
+  onUnlock?: (id: TId) => void;
+  /** Called when stored data fails its integrity check. */
+  onTamperDetected?: (key: string) => void;
+};
+```
+
+<ParamField path="onTamperDetected" type="(key: string) => void">
+  Called when stored data fails its integrity check. The `key` parameter indicates which storage key was tampered with (e.g., `"unlocked"`, `"progress"`, or `"items"`).
+</ParamField>
+
+## Custom Hash Adapters
+
+You can provide your own hash adapter for stronger or custom hashing:
+
+```typescript
+import { createAchievements } from 'achievements-manager';
+import { sha256 } from 'some-crypto-library';
+
+const customHashAdapter = {
+  hash(data: string): string {
+    return sha256(data);
+  },
+};
+
+const engine = createAchievements({
+  definitions: achievements,
+  hash: customHashAdapter,
+});
+```
+
+<Accordion title="Example: Web Crypto API Hash Adapter">
+```typescript
+function webCryptoHashAdapter(): HashAdapter {
+  return {
+    async hash(data: string): Promise<string> {
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    },
+  };
+}
+```
+
+Note: The current `HashAdapter` type expects a synchronous `hash()` function. For async hashing, you'll need to modify the type definition or use a synchronous wrapper.
+</Accordion>
+
+## Backward Compatibility
+
+The anti-cheat system is backward-compatible with existing data that was stored before hash checking was implemented:
+
+```typescript
+// From packages/core/src/engine.ts:54
+if (storedHash === null) return true;
+```
+
+If no hash is stored (e.g., data from an earlier version), the data is trusted as-is. On the next write, a hash will be computed and stored.
+
+## Persistence Implementation
+
+All data writes use the `persistData()` helper, which stores both the data and its hash:
+
+```typescript
+// From packages/core/src/engine.ts:61-64
+function persistData(key: string, value: string): void {
+  storage.set(key, value);
+  storage.set(key + HASH_SUFFIX, computeHash(value));
+}
+```
+
+When data is removed, both the data and hash are deleted:
+
+```typescript
+// From packages/core/src/engine.ts:66-69
+function removeData(key: string): void {
+  storage.remove(key);
+  storage.remove(key + HASH_SUFFIX);
+}
+```
+
+<Info>
+The hash suffix is `:hash`, so if the data key is `"unlocked"`, the hash is stored at `"unlocked:hash"`.
+</Info>
+
+## Best Practices
+
+1. **Always configure `onTamperDetected`** to log or alert when tampering is detected
+2. **Use server-side validation** for security-critical achievements (e.g., in-app purchases)
+3. **Don't rely on client-side checks alone** for preventing exploits
+4. **Consider custom hash adapters** if you need stronger cryptographic guarantees
+5. **Test your tamper detection** by manually editing localStorage during development
+
+```typescript
+// Example: Testing tamper detection
+const engine = createAchievements({
+  definitions: achievements,
+  onTamperDetected: (key) => {
+    console.error(`SECURITY: Tamper detected on ${key}`);
+    // In production, might send to analytics or disable features
+  },
+});
+
+// Simulate tampering (in dev tools console):
+// localStorage.setItem('unlocked', JSON.stringify(['fake-achievement']));
+// Then reload - tamper will be detected and storage wiped
+```

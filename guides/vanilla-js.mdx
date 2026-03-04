@@ -1,0 +1,339 @@
+---
+title: Vanilla JavaScript Guide
+description: Complete guide for using achievements-manager core package in vanilla JavaScript
+---
+
+This guide shows you how to use the core `achievements` package in vanilla JavaScript applications.
+
+## Installation
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install achievements
+    ```
+  </Step>
+
+  <Step title="Import the core functions">
+    ```javascript
+    import { createAchievements, defineAchievements, localStorageAdapter } from 'achievements';
+    ```
+  </Step>
+</Steps>
+
+## Define Your Achievements
+
+Use `defineAchievements()` to create a typed array of achievement definitions:
+
+```javascript
+const definitions = defineAchievements([
+  {
+    id: "first-visit",
+    label: "First Contact",
+    description: "Initialized session for the first time.",
+  },
+  {
+    id: "night-owl",
+    label: "Night Protocol",
+    description: "Operating between 00:00 and 05:00.",
+    hidden: true, // Hidden until unlocked
+  },
+  {
+    id: "click-frenzy",
+    label: "Input Overflow",
+    description: "Registered 50 consecutive inputs.",
+    maxProgress: 50, // Auto-unlocks when progress reaches 50
+  },
+  {
+    id: "explorer",
+    label: "Full Traversal",
+    description: "Accessed all system modules.",
+    maxProgress: 3,
+  },
+]);
+```
+
+### Achievement Properties
+
+- `id` (required): Unique identifier for the achievement
+- `label` (required): Display name
+- `description` (required): Description text
+- `hidden` (optional): If true, id/label/description are hidden until unlocked
+- `hint` (optional): If true, only the description is hidden until unlocked
+- `maxProgress` (optional): When provided, enables progress tracking and auto-unlocks at this value
+
+## Create the Engine
+
+Initialize the achievement engine with your definitions:
+
+```javascript
+const engine = createAchievements({
+  definitions,
+  storage: localStorageAdapter('my-app'),
+  onUnlock: (id) => {
+    console.log(`Achievement unlocked: ${id}`);
+    // Show notification, play sound, etc.
+  },
+  onTamperDetected: (key) => {
+    console.warn(`Tamper detected in storage key: ${key}`);
+    // Handle tampering (e.g., show warning to user)
+  },
+});
+```
+
+### Configuration Options
+
+- `definitions` (required): Array of achievement definitions
+- `storage` (optional): Storage adapter (defaults to `localStorageAdapter()`)
+- `hash` (optional): Hash adapter for tamper detection (defaults to `fnv1aHashAdapter()`)
+- `onUnlock` (optional): Callback fired when an achievement is unlocked
+- `onTamperDetected` (optional): Callback fired when stored data fails integrity check
+
+## Unlock Achievements
+
+### Manual Unlock
+
+```javascript
+// Unlock an achievement directly
+engine.unlock('first-visit');
+
+// Check if unlocked
+if (engine.isUnlocked('first-visit')) {
+  console.log('User has visited before');
+}
+
+// Get all unlocked achievement IDs
+const unlocked = engine.getUnlocked(); // Returns ReadonlySet<string>
+console.log(`Unlocked ${engine.getUnlockedCount()} achievements`);
+```
+
+### Progress-Based Unlock
+
+For achievements with `maxProgress`, they auto-unlock when progress reaches the target:
+
+```javascript
+// Set progress to absolute value
+engine.setProgress('click-frenzy', 25);
+
+// Increment progress by 1
+engine.incrementProgress('click-frenzy');
+
+// Get current progress
+const progress = engine.getProgress('click-frenzy'); // Returns 26
+
+// Auto-unlocks when progress >= maxProgress
+for (let i = 0; i < 30; i++) {
+  engine.incrementProgress('click-frenzy');
+}
+// Achievement now unlocked!
+```
+
+## Item Collection
+
+Use `collectItem()` to track unique items and automatically update progress:
+
+```javascript
+// Define achievement with maxProgress
+const definitions = defineAchievements([
+  {
+    id: "scanner",
+    label: "Network Scanner",
+    description: "Scanned 2 unique network nodes.",
+    maxProgress: 2,
+  },
+]);
+
+const engine = createAchievements({ definitions });
+
+// Collect unique items
+engine.collectItem('scanner', 'node-alpha');
+engine.collectItem('scanner', 'node-beta');
+engine.collectItem('scanner', 'node-alpha'); // Idempotent - no effect
+
+// Get collected items
+const items = engine.getItems('scanner'); // Returns ReadonlySet with 2 items
+
+// Progress is automatically set to items.size (2)
+console.log(engine.getProgress('scanner')); // 2
+// Achievement auto-unlocked!
+```
+
+## Dynamic Progress Targets
+
+Update `maxProgress` at runtime using `setMaxProgress()`:
+
+```javascript
+const definitions = defineAchievements([
+  {
+    id: "full-coverage",
+    label: "Full Coverage",
+    description: "Scanned every node in the network.",
+    // No static maxProgress
+  },
+]);
+
+const engine = createAchievements({ definitions });
+
+// Set max progress dynamically based on current state
+const totalNodes = fetchNodeCount();
+engine.setMaxProgress('full-coverage', totalNodes);
+
+// Track progress as normal
+engine.collectItem('full-coverage', 'node-1');
+engine.collectItem('full-coverage', 'node-2');
+
+// If node count changes, update the target
+if (networkExpanded) {
+  engine.setMaxProgress('full-coverage', totalNodes + 2);
+}
+```
+
+## Subscribe to Changes
+
+React to achievement state changes:
+
+```javascript
+const unsubscribe = engine.subscribe((state) => {
+  console.log('State updated:', state);
+  
+  // state.unlockedIds - ReadonlySet of unlocked achievement IDs
+  // state.progress - Record of achievement IDs to progress values
+  // state.toastQueue - Array of achievement IDs to show as notifications
+  
+  updateUI(state);
+});
+
+// Later, clean up
+unsubscribe();
+```
+
+## Toast Notifications
+
+Manage achievement unlock notifications:
+
+```javascript
+const engine = createAchievements({
+  definitions,
+  onUnlock: (id) => {
+    // Achievement is added to toast queue automatically
+  },
+});
+
+engine.subscribe((state) => {
+  // Show toasts from queue
+  state.toastQueue.forEach(id => {
+    const def = engine.getDefinition(id);
+    showToast({
+      title: def.label,
+      description: def.description,
+      onClose: () => engine.dismissToast(id),
+    });
+  });
+});
+```
+
+## Reset Progress
+
+Wipe all state from memory and storage:
+
+```javascript
+// Clear all achievements and progress
+engine.reset();
+
+// All data removed from storage
+console.log(engine.getUnlockedCount()); // 0
+```
+
+## Storage Adapters
+
+The package includes three built-in adapters:
+
+### LocalStorage (Default)
+
+```javascript
+import { localStorageAdapter } from 'achievements';
+
+const engine = createAchievements({
+  definitions,
+  storage: localStorageAdapter('my-prefix'), // Keys: my-prefix:unlocked, etc.
+});
+```
+
+### In-Memory Storage
+
+Useful for testing or temporary sessions:
+
+```javascript
+import { inMemoryAdapter } from 'achievements';
+
+const engine = createAchievements({
+  definitions,
+  storage: inMemoryAdapter(), // No persistence
+});
+```
+
+### Custom Storage
+
+See the [Custom Storage Guide](/guides/custom-storage) for implementing your own adapter.
+
+## Anti-Cheat Protection
+
+The engine automatically protects stored data with integrity hashes:
+
+```javascript
+const engine = createAchievements({
+  definitions,
+  onTamperDetected: (key) => {
+    // Called when stored data fails hash verification
+    console.warn(`Storage key "${key}" has been tampered with`);
+    
+    // The engine automatically wipes corrupted data and starts fresh
+    showWarningToUser();
+  },
+});
+```
+
+The default `fnv1aHashAdapter()` provides fast, synchronous tamper detection. For stronger hashing, see the [Custom Hash Guide](/guides/custom-hash).
+
+## Complete Example
+
+```javascript
+import { createAchievements, defineAchievements, localStorageAdapter } from 'achievements';
+
+// 1. Define achievements
+const definitions = defineAchievements([
+  { id: 'first-visit', label: 'Welcome', description: 'First visit' },
+  { id: 'power-user', label: 'Power User', description: '100 actions', maxProgress: 100 },
+]);
+
+// 2. Create engine
+const engine = createAchievements({
+  definitions,
+  storage: localStorageAdapter('game'),
+  onUnlock: (id) => console.log(`Unlocked: ${id}`),
+});
+
+// 3. Track user actions
+engine.unlock('first-visit');
+
+document.getElementById('action-btn').addEventListener('click', () => {
+  engine.incrementProgress('power-user');
+});
+
+// 4. Subscribe to updates
+engine.subscribe((state) => {
+  document.getElementById('count').textContent = 
+    `${state.unlockedIds.size} / ${definitions.length}`;
+});
+
+// 5. Show initial state
+const state = engine.getState();
+console.log('Unlocked:', [...state.unlockedIds]);
+console.log('Progress:', state.progress);
+```
+
+## Next Steps
+
+- [React Integration Guide](/guides/react-integration) - Use with React hooks and context
+- [Custom Storage Guide](/guides/custom-storage) - Implement custom storage backends
+- [Custom Hash Guide](/guides/custom-hash) - Use custom hashing for tamper detection

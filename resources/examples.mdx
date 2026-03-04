@@ -1,0 +1,470 @@
+---
+title: Examples
+description: Real-world implementations from the achievements-manager example app
+---
+
+The example application in `apps/example/` demonstrates all core features of achievements-manager. Below are complete, production-ready implementations extracted from the demo.
+
+## Setup
+
+### Achievement Definitions
+
+Define your achievements in a central file using `defineAchievements` for full type inference:
+
+```ts title="src/achievements.ts"
+import {
+  defineAchievements,
+  createAchievements,
+  localStorageAdapter,
+} from "achievements-react";
+
+export const definitions = defineAchievements([
+  {
+    id: "first-visit",
+    label: "First Contact",
+    description: "Initialized session for the first time.",
+  },
+  {
+    id: "returning",
+    label: "Persistent Agent",
+    description: "Returned for a subsequent session.",
+  },
+  {
+    id: "night-owl",
+    label: "Night Protocol",
+    description: "Operating between 00:00 and 05:00.",
+    hidden: true,
+  },
+  {
+    id: "click-frenzy",
+    label: "Input Overflow",
+    description: "Registered 50 consecutive inputs.",
+    maxProgress: 50,
+  },
+  {
+    id: "explorer",
+    label: "Full Traversal",
+    description: "Accessed all system modules.",
+    maxProgress: 3,
+  },
+  {
+    id: "scanner",
+    label: "Network Scanner",
+    description: "Scanned 2 unique network nodes.",
+    maxProgress: 2,
+  },
+  {
+    id: "full-coverage",
+    label: "Full Coverage",
+    description: "Scanned every node in the network.",
+    // No static maxProgress — set at runtime via setMaxProgress
+  },
+]);
+
+export type AchievementId = (typeof definitions)[number]["id"];
+
+export const {
+  engine,
+  Provider,
+  useAchievements,
+  useIsUnlocked,
+  useProgress,
+  useAchievementToast,
+  useUnlockedCount,
+  useTamperDetected,
+} = createAchievements<AchievementId>({
+  definitions,
+  storage: localStorageAdapter("achievements-demo"),
+});
+```
+
+### Provider Setup
+
+Wrap your app with the Provider and handle tamper detection:
+
+```tsx title="src/App.tsx"
+import { useTamperDetected, Provider } from "./achievements";
+import { JumpscarePage } from "./components/JumpscarePage";
+import { Layout } from "./components/Layout";
+
+export default function App() {
+  const tamperKey = useTamperDetected();
+
+  if (tamperKey !== null) {
+    return <JumpscarePage tamperKey={tamperKey} />;
+  }
+
+  return (
+    <Provider>
+      <SessionInit />
+      <Layout />
+    </Provider>
+  );
+}
+```
+
+## Session-Based Achievements
+
+Unlock achievements automatically based on session conditions:
+
+```tsx title="src/App.tsx"
+import { useEffect } from "react";
+import { engine, useAchievements } from "./achievements";
+
+function SessionInit() {
+  const { unlock } = useAchievements();
+
+  useEffect(() => {
+    // The engine hydrates from storage on creation, so isUnlocked("first-visit")
+    // is already true when the user is returning — no separate key needed.
+    const isReturning = engine.isUnlocked("first-visit");
+
+    unlock("first-visit");
+
+    if (isReturning) unlock("returning");
+    if (new Date().getHours() < 5) unlock("night-owl");
+  }, [unlock]);
+
+  return null;
+}
+```
+
+## Progress-Based Achievements
+
+### Click Counter with Progress Bar
+
+Track user interactions with automatic unlock at threshold:
+
+```tsx title="src/components/ClickFrenzySection.tsx"
+import { useAchievements, useIsUnlocked, useProgress } from "../achievements";
+import { Progress } from "./ui/progress";
+import { Button } from "./ui/button";
+
+export function ClickFrenzySection() {
+  const { incrementProgress } = useAchievements();
+  const { progress, max = 50 } = useProgress("click-frenzy");
+  const unlocked = useIsUnlocked("click-frenzy");
+
+  return (
+    <section>
+      <h2>Input Overflow</h2>
+      <p>Click 50 times to trigger auto-unlock via progress tracking.</p>
+
+      <div className="flex items-center gap-5">
+        <Button
+          variant={unlocked ? "accent" : "outline"}
+          onClick={() => incrementProgress("click-frenzy")}
+          disabled={unlocked}
+        >
+          {unlocked ? "COMPLETE" : "CLICK"}
+          <span className="text-sm">
+            {progress}&thinsp;/&thinsp;{max}
+          </span>
+        </Button>
+
+        <Progress value={(progress / max) * 100} />
+      </div>
+    </section>
+  );
+}
+```
+
+### Module Exploration Tracker
+
+Track unique module visits with local state:
+
+```tsx title="src/components/ExplorerSection.tsx"
+import { useState } from "react";
+import { useAchievements, useIsUnlocked, useProgress } from "../achievements";
+import { Button } from "./ui/button";
+
+const MODULES = [
+  { id: "core", label: "core", desc: "Engine · types · factory" },
+  { id: "adapters", label: "adapters", desc: "localStorage · inMemory" },
+  { id: "react", label: "react", desc: "Provider · hooks" },
+] as const;
+
+export function ExplorerSection() {
+  const { incrementProgress } = useAchievements();
+  const { progress } = useProgress("explorer");
+  const unlocked = useIsUnlocked("explorer");
+  const [visited, setVisited] = useState<Set<string>>(new Set());
+
+  function visit(id: string) {
+    if (visited.has(id)) return;
+    setVisited((prev) => new Set(prev).add(id));
+    incrementProgress("explorer");
+  }
+
+  return (
+    <section>
+      <h2>Full Traversal</h2>
+      <p>Visit all three library modules to complete the traversal.</p>
+
+      <div className="grid grid-cols-3 gap-3">
+        {MODULES.map((mod) => {
+          const done = visited.has(mod.id);
+          return (
+            <Button
+              key={mod.id}
+              variant={done || unlocked ? "accent" : "outline"}
+              onClick={() => visit(mod.id)}
+              disabled={done || unlocked}
+            >
+              <span className="font-mono">{mod.label}</span>
+              <span className="text-sm text-faint">{mod.desc}</span>
+              <span className="text-xs">
+                {done ? "✓ visited" : "→ visit"}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+
+      <p className="text-sm text-faint">{progress} / 3 modules visited</p>
+    </section>
+  );
+}
+```
+
+## Manual Unlock
+
+Trigger achievements directly via user actions:
+
+```tsx title="src/components/ManualSection.tsx"
+import { useAchievements, useIsUnlocked } from "../achievements";
+import type { AchievementId } from "../achievements";
+import { Button } from "./ui/button";
+
+type TriggerProps = {
+  id: AchievementId;
+  desc: string;
+};
+
+function ManualTrigger({ id, desc }: TriggerProps) {
+  const { unlock } = useAchievements();
+  const unlocked = useIsUnlocked(id);
+
+  return (
+    <Button
+      variant={unlocked ? "accent" : "outline"}
+      onClick={() => unlock(id)}
+      disabled={unlocked}
+    >
+      <code className="font-mono">{id}</code>
+      <span className="text-sm text-faint">{desc}</span>
+      <span className="text-xs">
+        {unlocked ? "✓ unlocked" : "→ trigger"}
+      </span>
+    </Button>
+  );
+}
+
+export function ManualSection() {
+  return (
+    <section>
+      <h2>Manual Unlock</h2>
+      <p>
+        Direct calls to <code>unlock()</code>. Session conditions are also
+        checked automatically on mount.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        <ManualTrigger id="returning" desc="Simulate a returning visitor" />
+        <ManualTrigger
+          id="night-owl"
+          desc="Simulate midnight conditions (hidden until unlocked)"
+        />
+      </div>
+    </section>
+  );
+}
+```
+
+## Item Collection
+
+### Collecting Unique Items
+
+Use `collectItem` for idempotent progress tracking with persisted item sets:
+
+```tsx title="src/components/CollectorSection.tsx"
+import { useEffect, useState } from "react";
+import { engine, useAchievements, useIsUnlocked, useProgress } from "../achievements";
+import { Button } from "./ui/button";
+
+const INITIAL_NODES = [
+  { id: "node-alpha", label: "alpha", desc: "Primary relay" },
+  { id: "node-beta", label: "beta", desc: "Secondary relay" },
+  { id: "node-gamma", label: "gamma", desc: "Tertiary relay" },
+  { id: "node-delta", label: "delta", desc: "Backup relay" },
+] as const;
+
+const EXTRA_NODES = [
+  { id: "node-epsilon", label: "epsilon", desc: "Deep node" },
+  { id: "node-zeta", label: "zeta", desc: "Dark node" },
+] as const;
+
+export function CollectorSection() {
+  const { collectItem, setMaxProgress } = useAchievements();
+  const { progress: scannerProgress } = useProgress("scanner");
+  const scannerUnlocked = useIsUnlocked("scanner");
+  const coverageUnlocked = useIsUnlocked("full-coverage");
+
+  const [expanded, setExpanded] = useState(false);
+  const nodes = expanded ? [...INITIAL_NODES, ...EXTRA_NODES] : INITIAL_NODES;
+
+  // Initialize from persisted engine state so scanned set survives page refresh
+  const [scanned, setScanned] = useState<Set<string>>(
+    () => new Set(engine.getItems("scanner")),
+  );
+
+  // Keep full-coverage's maxProgress in sync with the current node count
+  useEffect(() => {
+    setMaxProgress("full-coverage", nodes.length);
+  }, [nodes.length, setMaxProgress]);
+
+  function scan(nodeId: string) {
+    if (scanned.has(nodeId)) return;
+    collectItem("scanner", nodeId);
+    collectItem("full-coverage", nodeId);
+    setScanned((prev) => new Set(prev).add(nodeId));
+  }
+
+  return (
+    <section>
+      <h2>Node Scanner</h2>
+      <p>
+        Scan unique network nodes to unlock achievements. Scanning the same node
+        twice is idempotent. Expanding the network calls{" "}
+        <code>setMaxProgress</code> to raise the target dynamically.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        {nodes.map((node) => {
+          const done = scanned.has(node.id);
+          const allDone = coverageUnlocked;
+          return (
+            <Button
+              key={node.id}
+              variant={done || allDone ? "accent" : "outline"}
+              onClick={() => scan(node.id)}
+              disabled={done || allDone}
+            >
+              <span className="font-mono">{node.label}</span>
+              <span className="text-sm text-faint">{node.desc}</span>
+              <span className="text-xs">
+                {done ? "✓ scanned" : "→ scan"}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-4">
+        <p className="text-sm text-faint">
+          {scannerProgress} / 4 unique nodes scanned · {scanned.size} /{" "}
+          {nodes.length} for full coverage
+        </p>
+
+        {!expanded && !coverageUnlocked && (
+          <Button variant="ghost" onClick={() => setExpanded(true)}>
+            + expand network
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
+```
+
+### Key Techniques
+
+- **Persistence**: Initialize state from `engine.getItems()` to survive page refresh
+- **Dynamic targets**: Use `setMaxProgress()` to adjust achievement thresholds at runtime
+- **Idempotency**: `collectItem()` safely handles duplicate items
+
+## Toast Notifications
+
+Display achievement unlocks with a queue-based toast system:
+
+```tsx title="src/components/Toast.tsx"
+import { useEffect, useState } from "react";
+import { engine, useAchievementToast } from "../achievements";
+import { Card } from "./ui/card";
+import { Button } from "./ui/button";
+
+const DISPLAY_MS = 3200;
+const FADE_MS = 400;
+
+export function Toast() {
+  const { queue, dismiss } = useAchievementToast();
+  const [visible, setVisible] = useState(false);
+
+  const currentId = queue[0];
+  const def = currentId ? engine.getDefinition(currentId) : undefined;
+
+  useEffect(() => {
+    if (!currentId) return;
+    setVisible(true);
+
+    const fadeOut = setTimeout(() => setVisible(false), DISPLAY_MS);
+    const remove = setTimeout(() => dismiss(currentId), DISPLAY_MS + FADE_MS);
+
+    return () => {
+      clearTimeout(fadeOut);
+      clearTimeout(remove);
+    };
+  }, [currentId, dismiss]);
+
+  function close() {
+    setVisible(false);
+    if (currentId) setTimeout(() => dismiss(currentId), FADE_MS);
+  }
+
+  if (!currentId || !def) return null;
+
+  return (
+    <Card
+      className={[
+        "fixed bottom-7 right-7 w-[300px] z-50 p-4",
+        "transition-all duration-300",
+        visible
+          ? "opacity-100 translate-y-0 scale-100"
+          : "opacity-0 translate-y-3 scale-[0.97]",
+      ].join(" ")}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-mono text-xs tracking-wider text-accent">
+          // achievement unlocked
+        </span>
+        <Button variant="ghost" size="icon" onClick={close}>
+          ✕
+        </Button>
+      </div>
+
+      <div className="text-base font-semibold text-bright mb-1">
+        {def.label}
+      </div>
+      <div className="text-sm text-body">{def.description}</div>
+    </Card>
+  );
+}
+```
+
+### Toast Queue Management
+
+- **Queue-based**: Only show one toast at a time, process queue in order
+- **Auto-dismiss**: Automatically remove toasts after display duration
+- **Manual close**: Users can dismiss toasts early with cleanup delay
+- **Type-safe**: Get achievement definition from engine for display data
+
+## Running the Example
+
+The complete example app is available in the monorepo:
+
+```bash
+pnpm install
+pnpm dev:example
+```
+
+Visit `http://localhost:5173` to see all features in action.

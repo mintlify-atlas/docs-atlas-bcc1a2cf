@@ -1,0 +1,204 @@
+---
+title: defineAchievements
+description: Define achievements with full TypeScript type inference
+---
+
+## Function Signature
+
+```typescript
+function defineAchievements<const T extends ReadonlyArray<AchievementDef<string>>>(
+  definitions: T
+): T
+```
+
+Define an array of achievement definitions with full type inference. IDs are inferred as literal types, enabling autocomplete and type safety throughout your application.
+
+## Parameters
+
+<ParamField path="definitions" type="ReadonlyArray<AchievementDef<string>>" required>
+  Array of achievement definitions. Each definition must include `id`, `label`, and `description`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="definitions" type="T">
+  The same array, with full type inference preserved. IDs are inferred as literal string types.
+</ResponseField>
+
+## Example
+
+```typescript
+import { defineAchievements } from '@achievements-manager/core';
+
+const definitions = defineAchievements([
+  {
+    id: 'first-login',
+    label: 'Welcome!',
+    description: 'Log in for the first time',
+  },
+  {
+    id: 'complete-profile',
+    label: 'Profile Complete',
+    description: 'Fill out all profile fields',
+    maxProgress: 5,
+  },
+  {
+    id: 'visit-all-pages',
+    label: 'Explorer',
+    description: 'Visit all pages in the app',
+    maxProgress: 10,
+  },
+  {
+    id: 'secret-easter-egg',
+    label: '???',
+    description: 'Find the hidden easter egg',
+    hidden: true,
+  },
+] as const);
+
+// Extract the ID union type
+type AchievementId = typeof definitions[number]['id'];
+// Result: 'first-login' | 'complete-profile' | 'visit-all-pages' | 'secret-easter-egg'
+```
+
+## Type Inference
+
+The `defineAchievements` function uses TypeScript's `const` type parameter to preserve literal types:
+
+```typescript
+// Without defineAchievements:
+const definitions = [
+  { id: 'first-login', label: 'Welcome!', description: '...' },
+];
+// Type of id: string ❌
+
+// With defineAchievements:
+const definitions = defineAchievements([
+  { id: 'first-login', label: 'Welcome!', description: '...' },
+]);
+// Type of id: 'first-login' ✅
+```
+
+This enables:
+
+- **Autocomplete** for achievement IDs throughout your app
+- **Type errors** if you reference a non-existent achievement
+- **Refactoring safety** when renaming achievement IDs
+
+## Deriving the ID Type
+
+You can extract a union type of all achievement IDs:
+
+```typescript
+const definitions = defineAchievements([
+  { id: 'first-login', label: 'Welcome!', description: '...' },
+  { id: 'complete-profile', label: 'Profile', description: '...' },
+]);
+
+type AchievementId = typeof definitions[number]['id'];
+// Result: 'first-login' | 'complete-profile'
+
+// Use in your application:
+function unlockAchievement(id: AchievementId) {
+  engine.unlock(id); // Type-safe!
+}
+
+unlockAchievement('first-login'); // ✅
+unlockAchievement('invalid-id');  // ❌ Type error
+```
+
+## Achievement Definition Properties
+
+Each achievement in the array supports the following properties:
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the achievement. Use kebab-case for consistency.
+</ParamField>
+
+<ParamField path="label" type="string" required>
+  Display name for the achievement. Shown in UI when unlocked (or always if not hidden).
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Longer description explaining how to unlock the achievement.
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default={false}>
+  If true, the id, label, and description are hidden until unlocked. Use for secret achievements.
+</ParamField>
+
+<ParamField path="hint" type="boolean" default={false}>
+  If true, only the description is hidden until unlocked. The label is still shown. Use for spoiler-free hints.
+</ParamField>
+
+<ParamField path="maxProgress" type="number">
+  When provided, this achievement uses progress tracking. It auto-unlocks when progress reaches this value.
+</ParamField>
+
+## Usage Patterns
+
+### Basic Achievements
+
+```typescript
+const definitions = defineAchievements([
+  {
+    id: 'first-login',
+    label: 'Welcome!',
+    description: 'Log in for the first time',
+  },
+]);
+```
+
+### Progress-Based Achievements
+
+```typescript
+const definitions = defineAchievements([
+  {
+    id: 'complete-profile',
+    label: 'Profile Complete',
+    description: 'Fill out all 5 profile fields',
+    maxProgress: 5,
+  },
+]);
+```
+
+### Hidden Achievements
+
+```typescript
+const definitions = defineAchievements([
+  {
+    id: 'secret-code',
+    label: 'Code Breaker',
+    description: 'Enter the secret code',
+    hidden: true, // Everything hidden until unlocked
+  },
+  {
+    id: 'final-boss',
+    label: 'Dragon Slayer',
+    description: 'Defeat the final boss',
+    hint: true, // Label shown, description hidden
+  },
+]);
+```
+
+### Collection Achievements
+
+```typescript
+const definitions = defineAchievements([
+  {
+    id: 'collect-all-badges',
+    label: 'Badge Collector',
+    description: 'Collect all badges',
+    maxProgress: 10,
+  },
+]);
+
+// Track with collectItem:
+engine.collectItem('collect-all-badges', 'badge-1');
+engine.collectItem('collect-all-badges', 'badge-2');
+```
+
+## See Also
+
+- [createAchievements](/api/core/create-achievements) - Create an engine with your definitions
+- [AchievementDef Type](/api/core/types) - Full type definition

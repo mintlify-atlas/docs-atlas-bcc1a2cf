@@ -1,0 +1,161 @@
+---
+title: createAchievements
+description: Factory function that creates a fully-typed achievement system with bound hooks and Provider
+---
+
+Factory that creates the achievement engine and returns hooks already bound to your achievement ID type. This eliminates the need to write `useHook<AchievementId>()` everywhere - all hooks are pre-typed.
+
+## Signature
+
+```typescript
+function createAchievements<TId extends string>(
+  config: AchievementsConfig<TId>
+): {
+  engine: AchievementEngine<TId>;
+  Provider: ({ children }: { children: ReactNode }) => JSX.Element;
+  useAchievements: () => AchievementEngine<TId>;
+  useIsUnlocked: (id: TId) => boolean;
+  useProgress: (id: TId) => { progress: number; max: number | undefined };
+  useAchievementToast: () => { queue: ReadonlyArray<TId>; dismiss: (id: TId) => void };
+  useUnlockedCount: () => number;
+  useTamperDetected: () => string | null;
+}
+```
+
+## Parameters
+
+<ParamField path="config" type="AchievementsConfig<TId>" required>
+  Configuration object for the achievement system.
+  
+  <Expandable title="properties">
+    <ParamField path="definitions" type="AchievementDef<TId>[]" required>
+      Array of achievement definitions created with `defineAchievements`.
+    </ParamField>
+    
+    <ParamField path="storage" type="StorageAdapter" default="inMemoryAdapter()">
+      Storage adapter for persisting achievement state (e.g., `localStorageAdapter`, `inMemoryAdapter`).
+    </ParamField>
+    
+    <ParamField path="hash" type="HashAdapter" default="fnv1aHashAdapter">
+      Hash adapter for tamper detection.
+    </ParamField>
+    
+    <ParamField path="onTamperDetected" type="(key: string) => void">
+      Callback invoked when tampered storage is detected.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="engine" type="AchievementEngine<TId>">
+  The core achievement engine instance for imperative API calls.
+</ResponseField>
+
+<ResponseField name="Provider" type="({ children }: { children: ReactNode }) => JSX.Element">
+  Drop-in React context provider component with the engine already bound - no `engine` prop needed.
+</ResponseField>
+
+<ResponseField name="useAchievements" type="() => AchievementEngine<TId>">
+  Hook that returns the engine for imperative calls (unlock, setProgress, etc.).
+</ResponseField>
+
+<ResponseField name="useIsUnlocked" type="(id: TId) => boolean">
+  Reactive hook that returns whether a specific achievement is unlocked. Re-renders only when that achievement's lock state changes.
+</ResponseField>
+
+<ResponseField name="useProgress" type="(id: TId) => { progress: number; max: number | undefined }">
+  Reactive hook that returns the current progress and max progress for an achievement. Re-renders only when that achievement's progress changes.
+</ResponseField>
+
+<ResponseField name="useAchievementToast" type="() => { queue: ReadonlyArray<TId>; dismiss: (id: TId) => void }">
+  Reactive hook for toast notifications with queue and dismiss helper.
+</ResponseField>
+
+<ResponseField name="useUnlockedCount" type="() => number">
+  Reactive hook that returns the total count of unlocked achievements. Re-renders only when the count changes.
+</ResponseField>
+
+<ResponseField name="useTamperDetected" type="() => string | null">
+  Returns the storage key that failed its integrity check, or null if none. Handles both pre-mount and runtime tamper detection.
+</ResponseField>
+
+## Example
+
+```typescript
+// achievements.ts
+import {
+  defineAchievements,
+  createAchievements,
+  localStorageAdapter,
+} from "achievements-react";
+
+export const definitions = defineAchievements([
+  {
+    id: "first-visit",
+    label: "First Contact",
+    description: "Initialized session for the first time.",
+  },
+  {
+    id: "click-frenzy",
+    label: "Input Overflow",
+    description: "Registered 50 consecutive inputs.",
+    maxProgress: 50,
+  },
+]);
+
+export type AchievementId = (typeof definitions)[number]["id"];
+
+export const {
+  engine,
+  Provider,
+  useAchievements,
+  useIsUnlocked,
+  useProgress,
+  useAchievementToast,
+  useUnlockedCount,
+  useTamperDetected,
+} = createAchievements<AchievementId>({
+  definitions,
+  storage: localStorageAdapter("my-app"),
+});
+```
+
+```tsx
+// App.tsx
+import { Provider, useTamperDetected } from "./achievements";
+import { Dashboard } from "./Dashboard";
+
+export default function App() {
+  const tamperKey = useTamperDetected();
+
+  if (tamperKey !== null) {
+    return <div>Tamper detected on key: {tamperKey}</div>;
+  }
+
+  return (
+    <Provider>
+      <Dashboard />
+    </Provider>
+  );
+}
+```
+
+```tsx
+// Component.tsx
+import { useIsUnlocked } from "./achievements";
+
+function MyComponent() {
+  // Fully typed - no <T> needed!
+  const unlocked = useIsUnlocked("click-frenzy");
+  
+  return <div>{unlocked ? "Unlocked!" : "Locked"}</div>;
+}
+```
+
+## Notes
+
+- All returned hooks are already bound to your `TId` type, eliminating the need for generic type parameters in components
+- The `Provider` component has the engine pre-bound, so you don't need to pass an `engine` prop
+- The factory handles tamper detection buffering, ensuring `useTamperDetected()` works even when tampering is detected before React mounts
+- You can still access the engine directly for imperative operations or use it outside of React components

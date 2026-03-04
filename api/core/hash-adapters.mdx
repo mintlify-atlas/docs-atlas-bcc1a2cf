@@ -1,0 +1,338 @@
+---
+title: Hash Adapters
+description: Pluggable hash functions for tamper detection and data integrity
+---
+
+Hash adapters provide tamper detection for stored achievement data. The engine computes a hash of data before storing and verifies it on read. If the hash doesn't match, the data has been tampered with and is discarded.
+
+## HashAdapter Interface
+
+```typescript
+type HashAdapter = {
+  hash(data: string): string;
+}
+```
+
+A hash adapter takes a string and returns a hash string. The hash should be deterministic (same input = same output) and reasonably collision-resistant.
+
+<ParamField path="hash" type="(data: string) => string" required>
+  Compute a hash of the input data. Should return a deterministic string.
+</ParamField>
+
+---
+
+## fnv1aHashAdapter
+
+```typescript
+function fnv1aHashAdapter(): HashAdapter
+```
+
+Default hash adapter using FNV-1a (32-bit). Fast, synchronous, and sufficient for tamper detection.
+
+<ResponseField name="adapter" type="HashAdapter">
+  Hash adapter instance using FNV-1a algorithm
+</ResponseField>
+
+### Example
+
+```typescript
+import { createAchievements, fnv1aHashAdapter } from '@achievements-manager/core';
+
+const engine = createAchievements({
+  definitions,
+  hash: fnv1aHashAdapter(), // This is the default
+});
+```
+
+### Behavior
+
+- **Algorithm**: FNV-1a (Fowler-Noll-Vo hash function)
+- **Output**: 32-bit hash as hexadecimal string
+- **Speed**: Extremely fast (~millions of ops/sec)
+- **Collisions**: Low probability for typical achievement data
+- **Cryptographic**: No (not suitable for security, only tamper detection)
+
+### Implementation
+
+```typescript
+export function fnv1aHashAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      let h = 2166136261; // FNV-1a offset basis
+      for (let i = 0; i < data.length; i++) {
+        h ^= data.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0; // FNV prime, keep 32-bit unsigned
+      }
+      return h.toString(16);
+    },
+  };
+}
+```
+
+### Example Output
+
+```typescript
+const adapter = fnv1aHashAdapter();
+
+adapter.hash('[]'); // "811c9dc5" (empty unlocked array)
+adapter.hash('["first-login"]'); // "a1b2c3d4" (example hash)
+adapter.hash('["first-login","complete-profile"]'); // "e5f6a7b8" (example hash)
+```
+
+---
+
+## Custom Hash Adapters
+
+You can create custom adapters for stronger hashing or specialized use cases.
+
+### Crypto API Example (SHA-256)
+
+```typescript
+import { HashAdapter } from '@achievements-manager/core';
+
+function sha256HashAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      // Note: crypto.subtle.digest is async, so we use a synchronous alternative
+      // For actual SHA-256, you'd need a sync library or maintain a cache
+      
+      // Example with a hypothetical sync SHA-256 library:
+      return sha256Sync(data);
+    },
+  };
+}
+```
+
+### Simple Checksum Example
+
+```typescript
+import { HashAdapter } from '@achievements-manager/core';
+
+function checksumAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        sum += data.charCodeAt(i);
+      }
+      return sum.toString(36);
+    },
+  };
+}
+```
+
+### MurmurHash Example
+
+```typescript
+import { HashAdapter } from '@achievements-manager/core';
+import murmur from 'murmurhash-js';
+
+function murmurHashAdapter(): HashAdapter {
+  return {
+    hash(data: string): string {
+      return murmur.murmur3(data).toString(16);
+    },
+  };
+}
+```
+
+---
+
+## How Integrity Checking Works
+
+### Storage Format
+
+For each storage key, the engine stores two items:
+
+1. The data itself (e.g., `"unlocked"` → `"[\"first-login\"]"`)  
+2. A hash of the data (e.g., `"unlocked:hash"` → `"a1b2c3d4"`)
+
+### Write Flow
+
+```typescript
+// User unlocks an achievement
+engine.unlock('first-login');
+
+// Engine serializes data
+const data = JSON.stringify(['first-login']); // '["first-login"]'
+
+// Engine computes hash
+const hash = hashAdapter.hash(data); // 'a1b2c3d4'
+
+// Engine stores both
+storage.set('unlocked', data);
+storage.set('unlocked:hash', hash);
+```
+
+### Read Flow
+
+```typescript
+// Engine loads data on initialization
+const data = storage.get('unlocked'); // '["first-login"]'
+const storedHash = storage.get('unlocked:hash'); // 'a1b2c3d4'
+
+// Engine recomputes hash
+const computedHash = hashAdapter.hash(data); // 'a1b2c3d4'
+
+// Engine verifies integrity
+if (storedHash === computedHash) {
+  // Data is intact, use it
+  unlockedIds = JSON.parse(data);
+} else {
+  // Data was tampered with!
+  config.onTamperDetected?.('unlocked');
+  unlockedIds = new Set(); // Start fresh
+}
+```
+
+### Tamper Detection
+
+If a user manually edits localStorage:
+
+```javascript
+// User tries to cheat by editing localStorage
+localStorage.setItem('unlocked', '["first-login","secret-achievement"]');
+// But forgets to update the hash!
+
+// On next page load:
+// computedHash('[".."]') !== storedHash
+// → onTamperDetected('unlocked') is called
+// → All achievement data is wiped and reset to clean state
+```
+
+---
+
+## Security Considerations
+
+### Not Cryptographically Secure
+
+The default `fnv1aHashAdapter` is **not cryptographically secure**. It's designed for:
+
+- Detecting accidental corruption
+- Deterring casual tampering
+- Fast integrity checks
+
+It's **not suitable** for:
+
+- Preventing determined attackers
+- Protecting sensitive data
+- Cryptographic signatures
+
+### Client-Side Limitations
+
+All client-side anti-cheat measures can be bypassed:
+
+- Users can modify JavaScript code
+- Users can compute valid hashes for fake data
+- Users can disable integrity checks entirely
+
+**For server-authoritative achievements**, validate unlocks on the backend.
+
+### When to Use Hash Adapters
+
+Hash adapters are useful for:
+
+- Single-player games (deter casual cheating)
+- Progress tracking apps (detect corruption)
+- Achievements for fun (not competitive)
+
+Avoid relying on client-side integrity for:
+
+- Leaderboards
+- Competitive multiplayer
+- Rewards with real value
+
+---
+
+## Best Practices
+
+### Use the Default
+
+For most use cases, `fnv1aHashAdapter()` is sufficient:
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  // No need to specify hash — fnv1aHashAdapter is the default
+});
+```
+
+### Handle Tamper Detection
+
+Always provide an `onTamperDetected` callback:
+
+```typescript
+const engine = createAchievements({
+  definitions,
+  onTamperDetected: (key) => {
+    console.warn(`Tampered data detected: ${key}`);
+    // Optional: log to analytics, show warning to user, etc.
+  },
+});
+```
+
+### Testing
+
+When testing, you can use a no-op hash adapter to disable integrity checks:
+
+```typescript
+const noOpHashAdapter = (): HashAdapter => ({
+  hash: () => 'noop',
+});
+
+const engine = createAchievements({
+  definitions,
+  hash: noOpHashAdapter(), // No integrity checks
+});
+```
+
+### Stronger Hashing
+
+If you need stronger tamper resistance, use a cryptographic hash:
+
+```typescript
+import { createAchievements } from '@achievements-manager/core';
+import { sha256 } from 'crypto-js';
+
+const engine = createAchievements({
+  definitions,
+  hash: {
+    hash: (data) => sha256(data).toString(),
+  },
+});
+```
+
+Note: This only raises the bar — determined users can still bypass it.
+
+---
+
+## Migration from Unhashed Data
+
+The engine is backward-compatible with data stored before integrity checks were added:
+
+```typescript
+// Old data (no hash key):
+localStorage.setItem('unlocked', '["first-login"]');
+// No 'unlocked:hash' key exists
+
+// Engine behavior:
+const storedHash = storage.get('unlocked:hash'); // null
+if (storedHash === null) {
+  // No hash stored yet — trust the data as-is
+  // This allows smooth migration from pre-anti-cheat versions
+}
+
+// Next write will add the hash:
+engine.unlock('second-login');
+// Now both 'unlocked' and 'unlocked:hash' exist
+```
+
+This ensures existing users don't lose their progress when you add integrity checks.
+
+---
+
+## See Also
+
+- [createAchievements](/api/core/create-achievements) - Configure hash adapter
+- [Storage Adapters](/api/core/storage-adapters) - Storage backends that work with hashes
+- [Types](/api/core/types) - HashAdapter type definition

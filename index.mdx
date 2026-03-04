@@ -1,97 +1,300 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Achievements Manager
+description: Type-safe achievement tracking for web apps with tiny core and optional React bindings
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#0f1117] via-[#1a1d27] to-[#0f1117] dark:from-[#0f1117] dark:via-[#1a1d27] dark:to-[#0f1117] py-20 lg:py-24">
+  <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center opacity-10"></div>
+  <div className="max-w-7xl mx-auto px-6 lg:px-8 relative z-10">
+    <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white dark:text-white mb-6">
+          Type-safe achievement tracking for web apps
+        </h1>
+        <p className="text-lg sm:text-xl text-gray-300 dark:text-gray-300 max-w-2xl mb-8">
+          Add gamification to any web application with zero runtime dependencies. Auto-unlock, progress tracking, anti-cheat, and fine-grained React hooks.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-[#94cb04] hover:bg-[#7db003] text-gray-900 font-semibold transition-colors no-underline"
+          >
+            Get started
+          </a>
+          <a 
+            href="/installation" 
+            className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors no-underline"
+          >
+            View documentation
+          </a>
+        </div>
+      </div>
+      <div className="hidden lg:block lg:col-span-5">
+        <div className="relative">
+          <div className="absolute inset-0 bg-[#94cb04]/20 blur-3xl rounded-full"></div>
+          <div className="relative bg-[#1a1d27] dark:bg-[#1a1d27] rounded-2xl border border-[#27272a] dark:border-[#27272a] p-6 shadow-2xl">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#27272a] dark:border-[#27272a]">
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <pre className="text-sm text-gray-100 dark:text-gray-100 overflow-x-auto">
+              <code>{`const engine = createAchievements({
+  definitions: [
+    {
+      id: 'first-visit',
+      label: 'First Visit',
+      description: 'Open the app'
+    },
+    {
+      id: 'click-frenzy',
+      label: 'Click Frenzy',
+      description: 'Click 50 times',
+      maxProgress: 50
+    }
+  ],
+  storage: localStorageAdapter('my-app'),
+  onUnlock: (id) => showNotification(id)
+})
 
-Get your documentation site up and running in minutes.
+engine.unlock('first-visit')
+engine.incrementProgress('click-frenzy')`}</code>
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Everything you need for achievement tracking
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      A tiny, framework-agnostic library with optional React bindings for seamless integration
+    </p>
+  </div>
 
-## Make it yours
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Type-safe IDs</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Achievement IDs are inferred from definitions. Typos become compile errors.
+      </p>
+    </div>
 
-Design a docs site that looks great and empowers your users.
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Zero dependencies</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        The core package ships nothing but your own code. No bloat.
+      </p>
+    </div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Anti-cheat built-in</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Stored data is integrity-checked on every load with pluggable hash adapters.
+      </p>
+    </div>
 
-## Create beautiful pages
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Auto-unlock</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Progress-based achievements unlock automatically when thresholds are reached.
+      </p>
+    </div>
 
-Everything you need to create world-class documentation.
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Pluggable storage</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Swap localStorage, in-memory, or bring your own adapter. Framework-agnostic.
+      </p>
+    </div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    <div className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#94cb04] dark:hover:border-[#94cb04] transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#94cb04]/10 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#94cb04]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">React-ready</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Fine-grained hooks that only re-render components that need updates.
+      </p>
+    </div>
+  </div>
+</div>
 
-## Need inspiration?
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Quick start
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Get up and running in minutes with React or vanilla JavaScript
+    </p>
+  </div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+  <Steps>
+    <Step title="Install the package">
+      Choose the package that matches your stack:
+
+      <CodeGroup>
+      ```bash npm (React)
+      npm install achievements-react
+      ```
+      ```bash npm (Vanilla JS)
+      npm install achievements
+      ```
+      ```bash pnpm (React)
+      pnpm add achievements-react
+      ```
+      ```bash pnpm (Vanilla JS)
+      pnpm add achievements
+      ```
+      </CodeGroup>
+    </Step>
+
+    <Step title="Define your achievements">
+      Create a file to define your achievements with full type inference:
+
+      ```typescript
+      import { defineAchievements, createAchievements, localStorageAdapter } from 'achievements-react'
+
+      const definitions = defineAchievements([
+        { id: 'first-visit', label: 'First Visit', description: 'Open the app.' },
+        { id: 'click-frenzy', label: 'Click Frenzy', description: 'Click 50 times.', maxProgress: 50 },
+      ])
+
+      export type AchievementId = typeof definitions[number]['id']
+
+      export const { engine, Provider, useAchievements, useIsUnlocked, useProgress } =
+        createAchievements<AchievementId>({
+          definitions,
+          storage: localStorageAdapter('my-app'),
+        })
+      ```
+    </Step>
+
+    <Step title="Use in your app">
+      For React apps, wrap your app with the Provider and use the hooks:
+
+      ```tsx
+      <Provider>
+        <App />
+      </Provider>
+
+      // Inside your components
+      function MyComponent() {
+        const { unlock, incrementProgress } = useAchievements()
+        const visited = useIsUnlocked('first-visit')
+        const { progress, max } = useProgress('click-frenzy')
+
+        return <button onClick={() => incrementProgress('click-frenzy')}>
+          Click me! ({progress}/{max})
+        </button>
+      }
+      ```
+
+      For vanilla JS, use the engine directly:
+
+      ```typescript
+      engine.unlock('first-visit')
+      engine.subscribe((state) => {
+        console.log('Unlocked:', state.unlockedIds)
+      })
+      ```
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Explore the documentation
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Dive deeper into core concepts, guides, and API reference
+    </p>
+  </div>
+
+  <CardGroup cols={2}>
+    <Card title="Core concepts" icon="book-open" href="/concepts/achievements">
+      Learn about achievements, progress tracking, anti-cheat, and storage adapters
+    </Card>
+    <Card title="React integration" icon="react" href="/guides/react-integration">
+      Set up the Provider, use hooks, and integrate with your React app
+    </Card>
+    <Card title="Vanilla JS guide" icon="code" href="/guides/vanilla-js">
+      Use the framework-agnostic core in any JavaScript environment
+    </Card>
+    <Card title="API reference" icon="terminal" href="/api/core/create-achievements">
+      Complete API documentation for both core and React packages
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-r from-[#94cb04]/10 to-[#94cb04]/5 dark:from-[#94cb04]/10 dark:to-[#94cb04]/5 border border-[#94cb04]/20 dark:border-[#94cb04]/20 p-8 md:p-12 text-center">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Ready to add achievements to your app?
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">
+      Start tracking achievements with type-safe IDs, auto-unlock, and anti-cheat in minutes
+    </p>
+    <div className="flex flex-wrap justify-center gap-4">
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center px-6 py-3 rounded-lg bg-[#94cb04] hover:bg-[#7db003] text-gray-900 font-semibold transition-colors no-underline"
+      >
+        Get started
+      </a>
+      <a 
+        href="https://github.com/ntatoud/achievements-manager" 
+        className="inline-flex items-center px-6 py-3 rounded-lg border border-gray-300 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] hover:bg-gray-50 dark:hover:bg-[#242838] text-gray-900 dark:text-white font-semibold transition-colors no-underline"
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>

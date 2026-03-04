@@ -1,0 +1,124 @@
+---
+title: useAchievements
+description: Hook that returns the achievement engine for imperative API calls
+---
+
+Returns the full achievement engine instance, providing access to all imperative methods like `unlock()`, `setProgress()`, `reset()`, etc.
+
+## Signature
+
+```typescript
+function useAchievements<TId extends string>(): AchievementEngine<TId>
+```
+
+## Returns
+
+<ResponseField name="engine" type="AchievementEngine<TId>">
+  The achievement engine instance with all imperative methods.
+  
+  <Expandable title="properties">
+    <ResponseField name="unlock" type="(id: TId) => void">
+      Unlock an achievement immediately.
+    </ResponseField>
+    
+    <ResponseField name="setProgress" type="(id: TId, value: number) => void">
+      Set the progress value for an achievement. Auto-unlocks when progress reaches maxProgress.
+    </ResponseField>
+    
+    <ResponseField name="incrementProgress" type="(id: TId, amount?: number) => void">
+      Increment progress by the specified amount (default: 1). Auto-unlocks when progress reaches maxProgress.
+    </ResponseField>
+    
+    <ResponseField name="setMaxProgress" type="(id: TId, max: number) => void">
+      Dynamically set or update the max progress value for an achievement.
+    </ResponseField>
+    
+    <ResponseField name="reset" type="() => void">
+      Clear all achievement state and storage.
+    </ResponseField>
+    
+    <ResponseField name="isUnlocked" type="(id: TId) => boolean">
+      Check if an achievement is unlocked (non-reactive).
+    </ResponseField>
+    
+    <ResponseField name="getState" type="() => AchievementState<TId>">
+      Get the current achievement state snapshot (non-reactive).
+    </ResponseField>
+    
+    <ResponseField name="getDefinition" type="(id: TId) => AchievementDef<TId> | undefined">
+      Get the definition for a specific achievement.
+    </ResponseField>
+    
+    <ResponseField name="dismissToast" type="(id: TId) => void">
+      Dismiss a toast notification for an achievement.
+    </ResponseField>
+    
+    <ResponseField name="subscribe" type="(listener: (state: AchievementState<TId>) => void) => () => void">
+      Subscribe to state changes. Returns an unsubscribe function.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+```tsx
+import { useEffect } from "react";
+import { useAchievements } from "./achievements";
+
+function SessionInit() {
+  const { unlock, isUnlocked } = useAchievements();
+
+  useEffect(() => {
+    // Check if this is a returning user
+    const isReturning = isUnlocked("first-visit");
+
+    unlock("first-visit");
+
+    if (isReturning) {
+      unlock("returning");
+    }
+
+    // Check time of day
+    if (new Date().getHours() < 5) {
+      unlock("night-owl");
+    }
+  }, [unlock, isUnlocked]);
+
+  return null;
+}
+```
+
+```tsx
+import { useAchievements } from "./achievements";
+
+function ClickButton() {
+  const { incrementProgress } = useAchievements();
+
+  return (
+    <button onClick={() => incrementProgress("click-frenzy")}>
+      Click me!
+    </button>
+  );
+}
+```
+
+```tsx
+import { useAchievements } from "./achievements";
+
+function ResetButton() {
+  const { reset } = useAchievements();
+
+  return (
+    <button onClick={reset}>
+      Reset All Achievements
+    </button>
+  );
+}
+```
+
+## Notes
+
+- This hook does not cause re-renders when state changes - use reactive hooks like `useIsUnlocked` or `useProgress` for reactive UI
+- Must be used within an `AchievementsProvider` or the factory's `Provider`
+- Use this hook when you need to imperatively trigger achievement actions (unlock, progress updates, etc.)
+- For reading reactive state, prefer specialized hooks like `useIsUnlocked`, `useProgress`, or `useUnlockedCount`

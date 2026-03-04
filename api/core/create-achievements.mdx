@@ -1,0 +1,115 @@
+---
+title: createAchievements
+description: Create an achievement engine instance with the provided configuration
+---
+
+## Function Signature
+
+```typescript
+function createAchievements<TId extends string>(
+  config: Config<TId>
+): AchievementEngine<TId>
+```
+
+Creates and initializes an achievement engine with the provided configuration. This is the main entry point for setting up achievement tracking in your application.
+
+## Parameters
+
+<ParamField path="config" type="Config<TId>" required>
+  Configuration object for the achievement engine
+  
+  <Expandable title="Config properties">
+    <ParamField path="definitions" type="ReadonlyArray<AchievementDef<TId>>" required>
+      Array of achievement definitions. Each definition describes an achievement that can be tracked.
+    </ParamField>
+    
+    <ParamField path="storage" type="StorageAdapter" default="localStorageAdapter()">
+      Pluggable storage backend for persisting achievement state. Defaults to localStorage with integrity hashing.
+    </ParamField>
+    
+    <ParamField path="hash" type="HashAdapter" default="fnv1aHashAdapter()">
+      Pluggable hash function for tamper detection. Defaults to FNV-1a (32-bit).
+    </ParamField>
+    
+    <ParamField path="onUnlock" type="(id: TId) => void">
+      Called synchronously immediately after an achievement is unlocked.
+    </ParamField>
+    
+    <ParamField path="onTamperDetected" type="(key: string) => void">
+      Called when stored data fails its integrity check. The key parameter indicates which storage key was tampered with.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="engine" type="AchievementEngine<TId>">
+  An achievement engine instance with methods for unlocking achievements, tracking progress, and subscribing to state changes.
+</ResponseField>
+
+## Example
+
+```typescript
+import { createAchievements, defineAchievements } from '@achievements-manager/core';
+
+const definitions = defineAchievements([
+  {
+    id: 'first-login',
+    label: 'Welcome!',
+    description: 'Log in for the first time',
+  },
+  {
+    id: 'complete-profile',
+    label: 'Profile Complete',
+    description: 'Fill out all profile fields',
+    maxProgress: 5,
+  },
+]);
+
+const engine = createAchievements({
+  definitions,
+  onUnlock: (id) => {
+    console.log(`Achievement unlocked: ${id}`);
+  },
+  onTamperDetected: (key) => {
+    console.warn(`Tampered data detected: ${key}`);
+  },
+});
+```
+
+## Behavior
+
+### Initialization
+
+When `createAchievements` is called, it:
+
+1. Loads persisted state from storage (unlocked achievements, progress, collected items)
+2. Verifies integrity of stored data using hash validation
+3. If tampering is detected, fires `onTamperDetected` and resets to clean state
+4. Returns a ready-to-use engine instance
+
+### Integrity Protection
+
+The engine automatically protects against data tampering:
+
+- Each storage write includes a hash of the data
+- On read, the hash is verified against the stored data
+- If verification fails, `onTamperDetected` is called and the data is discarded
+- All storage keys are wiped together to maintain consistency
+
+### Storage Keys
+
+The engine uses three storage keys (with optional prefix from `localStorageAdapter`):
+
+- `unlocked` - Set of unlocked achievement IDs
+- `progress` - Progress values for achievements with `maxProgress`
+- `items` - Collected items for achievements using `collectItem()`
+
+Each key has a corresponding `:hash` key for integrity verification.
+
+## See Also
+
+- [AchievementEngine](/api/core/achievement-engine) - Methods available on the returned engine
+- [defineAchievements](/api/core/define-achievements) - Helper for defining achievements with type inference
+- [StorageAdapter](/api/core/storage-adapters) - Custom storage backends
+- [HashAdapter](/api/core/hash-adapters) - Custom hash functions

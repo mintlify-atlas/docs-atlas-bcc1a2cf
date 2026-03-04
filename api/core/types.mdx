@@ -1,0 +1,377 @@
+---
+title: Types
+description: TypeScript type definitions for the achievements-manager core package
+---
+
+Complete TypeScript type reference for the core achievement system.
+
+## AchievementDef
+
+```typescript
+type AchievementDef<TId extends string> = {
+  id: TId;
+  label: string;
+  description: string;
+  hidden?: boolean;
+  hint?: boolean;
+  maxProgress?: number;
+}
+```
+
+Defines a single achievement. Used in the `definitions` array passed to `createAchievements()`.
+
+### Properties
+
+<ParamField path="id" type="TId extends string" required>
+  Unique identifier for the achievement. Use kebab-case for consistency (e.g., `"first-login"`, `"complete-profile"`).
+</ParamField>
+
+<ParamField path="label" type="string" required>
+  Display name for the achievement. Shown in UI when unlocked (or always if not hidden).
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Longer description explaining how to unlock the achievement.
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default={false}>
+  If true, the id, label, and description are hidden until unlocked. Use for secret achievements.
+</ParamField>
+
+<ParamField path="hint" type="boolean" default={false}>
+  If true, only the description is hidden until unlocked. The label is still shown. Use for spoiler-free hints.
+</ParamField>
+
+<ParamField path="maxProgress" type="number">
+  When provided, this achievement uses progress tracking. It auto-unlocks when progress reaches this value.
+</ParamField>
+
+### Example
+
+```typescript
+const achievement: AchievementDef<'first-login'> = {
+  id: 'first-login',
+  label: 'Welcome!',
+  description: 'Log in for the first time',
+};
+
+const progressAchievement: AchievementDef<'complete-profile'> = {
+  id: 'complete-profile',
+  label: 'Profile Complete',
+  description: 'Fill out all 5 profile fields',
+  maxProgress: 5,
+};
+
+const secretAchievement: AchievementDef<'easter-egg'> = {
+  id: 'easter-egg',
+  label: 'Secret Discovered',
+  description: 'Find the hidden easter egg',
+  hidden: true,
+};
+```
+
+---
+
+## AchievementState
+
+```typescript
+type AchievementState<TId extends string> = {
+  unlockedIds: ReadonlySet<TId>;
+  progress: Readonly<Record<string, number>>;
+  toastQueue: ReadonlyArray<TId>;
+}
+```
+
+Snapshot of the engine state, passed to subscribers and returned by `getState()`.
+
+### Properties
+
+<ParamField path="unlockedIds" type="ReadonlySet<TId>" required>
+  Set of all unlocked achievement IDs. Check membership with `state.unlockedIds.has(id)`.
+</ParamField>
+
+<ParamField path="progress" type="Readonly<Record<string, number>>" required>
+  Progress values for achievements with `maxProgress`. Only includes achievements that have been progressed. Access with `state.progress[id] ?? 0`.
+</ParamField>
+
+<ParamField path="toastQueue" type="ReadonlyArray<TId>" required>
+  IDs waiting to be shown as notifications, ordered oldest-first. Not persisted (resets on page reload).
+</ParamField>
+
+### Example
+
+```typescript
+const state = engine.getState();
+
+// Check unlocked status
+if (state.unlockedIds.has('first-login')) {
+  console.log('User has logged in before');
+}
+
+// Show progress
+const progress = state.progress['complete-profile'] ?? 0;
+console.log(`Profile: ${progress}/5 fields completed`);
+
+// Display toasts
+state.toastQueue.forEach((id) => {
+  const def = engine.getDefinition(id);
+  showNotification(def);
+  engine.dismissToast(id);
+});
+```
+
+---
+
+## AchievementEngine
+
+```typescript
+type AchievementEngine<TId extends string> = {
+  // --- Writes ---
+  unlock(id: TId): void;
+  setProgress(id: TId, value: number): void;
+  incrementProgress(id: TId): void;
+  collectItem(id: TId, item: string): void;
+  setMaxProgress(id: TId, max: number): void;
+  dismissToast(id: TId): void;
+  reset(): void;
+
+  // --- Reads ---
+  isUnlocked(id: TId): boolean;
+  getProgress(id: TId): number;
+  getItems(id: TId): ReadonlySet<string>;
+  getUnlocked(): ReadonlySet<TId>;
+  getUnlockedCount(): number;
+  getState(): AchievementState<TId>;
+  getDefinition(id: TId): AchievementDef<TId> | undefined;
+
+  // --- Reactivity ---
+  subscribe(listener: (state: AchievementState<TId>) => void): () => void;
+}
+```
+
+The engine interface returned by `createAchievements()`. See [AchievementEngine API](/api/core/achievement-engine) for detailed method documentation.
+
+### Type Parameter
+
+<ParamField path="TId" type="string" required>
+  Union type of all achievement IDs. Inferred from the definitions array when using `defineAchievements()`.
+</ParamField>
+
+### Example
+
+```typescript
+const definitions = defineAchievements([
+  { id: 'first-login', label: 'Welcome', description: '...' },
+  { id: 'complete-profile', label: 'Profile', description: '...' },
+]);
+
+type AchievementId = typeof definitions[number]['id'];
+// Result: 'first-login' | 'complete-profile'
+
+const engine: AchievementEngine<AchievementId> = createAchievements({
+  definitions,
+});
+
+engine.unlock('first-login'); // ✅ Type-safe
+engine.unlock('invalid-id');  // ❌ Type error
+```
+
+---
+
+## StorageAdapter
+
+```typescript
+type StorageAdapter = {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  remove(key: string): void;
+}
+```
+
+Pluggable storage backend interface. See [Storage Adapters](/api/core/storage-adapters) for implementations and examples.
+
+### Methods
+
+<ParamField path="get" type="(key: string) => string | null" required>
+  Retrieve a value by key. Returns null if not found.
+</ParamField>
+
+<ParamField path="set" type="(key: string, value: string) => void" required>
+  Store a value with the given key. Overwrites existing value.
+</ParamField>
+
+<ParamField path="remove" type="(key: string) => void" required>
+  Delete a value by key. No-op if key doesn't exist.
+</ParamField>
+
+### Example
+
+```typescript
+import { StorageAdapter } from '@achievements-manager/core';
+
+const customAdapter: StorageAdapter = {
+  get: (key) => {
+    // Custom retrieval logic
+    return localStorage.getItem(key);
+  },
+  set: (key, value) => {
+    // Custom storage logic
+    localStorage.setItem(key, value);
+  },
+  remove: (key) => {
+    // Custom removal logic
+    localStorage.removeItem(key);
+  },
+};
+```
+
+---
+
+## HashAdapter
+
+```typescript
+type HashAdapter = {
+  hash(data: string): string;
+}
+```
+
+Pluggable hash function interface for tamper detection. See [Hash Adapters](/api/core/hash-adapters) for implementations and examples.
+
+### Methods
+
+<ParamField path="hash" type="(data: string) => string" required>
+  Compute a hash of the input data. Should return a deterministic string.
+</ParamField>
+
+### Example
+
+```typescript
+import { HashAdapter } from '@achievements-manager/core';
+
+const customHashAdapter: HashAdapter = {
+  hash: (data) => {
+    // Custom hash logic (example: simple checksum)
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      sum += data.charCodeAt(i);
+    }
+    return sum.toString(36);
+  },
+};
+```
+
+---
+
+## Config (AchievementsConfig)
+
+```typescript
+type Config<TId extends string> = {
+  definitions: ReadonlyArray<AchievementDef<TId>>;
+  storage?: StorageAdapter;
+  hash?: HashAdapter;
+  onUnlock?: (id: TId) => void;
+  onTamperDetected?: (key: string) => void;
+}
+```
+
+Configuration object passed to `createAchievements()`. Also exported as `AchievementsConfig`.
+
+### Properties
+
+<ParamField path="definitions" type="ReadonlyArray<AchievementDef<TId>>" required>
+  Array of achievement definitions. Use `defineAchievements()` for type inference.
+</ParamField>
+
+<ParamField path="storage" type="StorageAdapter" default="localStorageAdapter()">
+  Pluggable storage backend for persisting achievement state.
+</ParamField>
+
+<ParamField path="hash" type="HashAdapter" default="fnv1aHashAdapter()">
+  Pluggable hash function for tamper detection.
+</ParamField>
+
+<ParamField path="onUnlock" type="(id: TId) => void">
+  Called synchronously immediately after an achievement is unlocked.
+</ParamField>
+
+<ParamField path="onTamperDetected" type="(key: string) => void">
+  Called when stored data fails its integrity check.
+</ParamField>
+
+### Example
+
+```typescript
+import { Config, createAchievements } from '@achievements-manager/core';
+
+const config: Config<'first-login' | 'complete-profile'> = {
+  definitions: [
+    { id: 'first-login', label: 'Welcome', description: '...' },
+    { id: 'complete-profile', label: 'Profile', description: '...' },
+  ],
+  onUnlock: (id) => console.log(`Unlocked: ${id}`),
+  onTamperDetected: (key) => console.warn(`Tampered: ${key}`),
+};
+
+const engine = createAchievements(config);
+```
+
+---
+
+## Type Inference Examples
+
+### Deriving ID Union Type
+
+```typescript
+const definitions = defineAchievements([
+  { id: 'first-login', label: 'Welcome', description: '...' },
+  { id: 'complete-profile', label: 'Profile', description: '...' },
+] as const);
+
+type AchievementId = typeof definitions[number]['id'];
+// Result: 'first-login' | 'complete-profile'
+```
+
+### Type-Safe Engine
+
+```typescript
+const definitions = defineAchievements([
+  { id: 'first-login', label: 'Welcome', description: '...' },
+]);
+
+type AchievementId = typeof definitions[number]['id'];
+
+const engine = createAchievements<AchievementId>({
+  definitions,
+});
+
+// All methods are type-safe:
+engine.unlock('first-login'); // ✅
+engine.unlock('typo');        // ❌ Type error
+```
+
+### Generic Helper Function
+
+```typescript
+function createTypedEngine<TId extends string>(
+  definitions: ReadonlyArray<AchievementDef<TId>>
+): AchievementEngine<TId> {
+  return createAchievements({ definitions });
+}
+
+const engine = createTypedEngine([
+  { id: 'achievement-1', label: 'First', description: '...' },
+  { id: 'achievement-2', label: 'Second', description: '...' },
+]);
+
+engine.unlock('achievement-1'); // ✅ Type-safe
+```
+
+---
+
+## See Also
+
+- [createAchievements](/api/core/create-achievements) - Main factory function
+- [AchievementEngine](/api/core/achievement-engine) - Engine methods
+- [defineAchievements](/api/core/define-achievements) - Type inference helper
+- [Storage Adapters](/api/core/storage-adapters) - StorageAdapter implementations
+- [Hash Adapters](/api/core/hash-adapters) - HashAdapter implementations

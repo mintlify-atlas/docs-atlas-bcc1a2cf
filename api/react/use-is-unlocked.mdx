@@ -1,0 +1,91 @@
+---
+title: useIsUnlocked
+description: Reactive hook that returns whether a specific achievement is unlocked
+---
+
+Returns a boolean indicating whether the specified achievement is unlocked. The component re-renders only when this specific achievement's lock state changes.
+
+## Signature
+
+```typescript
+function useIsUnlocked<TId extends string>(id: TId): boolean
+```
+
+## Parameters
+
+<ParamField path="id" type="TId" required>
+  The ID of the achievement to check.
+</ParamField>
+
+## Returns
+
+<ResponseField name="unlocked" type="boolean">
+  `true` if the achievement is unlocked, `false` otherwise.
+</ResponseField>
+
+## Example
+
+```tsx
+import { useIsUnlocked, useProgress } from "./achievements";
+import { Button } from "./ui/button";
+
+function AchievementCard({ id }: { id: string }) {
+  const unlocked = useIsUnlocked(id);
+  const { progress, max } = useProgress(id);
+
+  return (
+    <div className={unlocked ? "unlocked" : "locked"}>
+      <h3>{unlocked ? "✓" : "○"} Achievement</h3>
+      <span>{unlocked ? "UNLOCKED" : "LOCKED"}</span>
+      {max && <p>{progress} / {max}</p>}
+    </div>
+  );
+}
+```
+
+```tsx
+import { useIsUnlocked, useAchievements } from "./achievements";
+
+function ClickFrenzyButton() {
+  const { incrementProgress } = useAchievements();
+  const unlocked = useIsUnlocked("click-frenzy");
+
+  return (
+    <button
+      onClick={() => incrementProgress("click-frenzy")}
+      disabled={unlocked}
+    >
+      {unlocked ? "COMPLETE" : "CLICK"}
+    </button>
+  );
+}
+```
+
+```tsx
+import { useIsUnlocked } from "./achievements";
+import type { AchievementDef } from "achievements";
+
+function SecretAchievement({ def }: { def: AchievementDef }) {
+  const unlocked = useIsUnlocked(def.id);
+  const isSecret = def.hidden && !unlocked;
+
+  return (
+    <div>
+      <h3>{isSecret ? "???" : def.label}</h3>
+      <p>{isSecret ? "Secret achievement" : def.description}</p>
+    </div>
+  );
+}
+```
+
+## Performance
+
+- **Optimized re-renders**: Only re-renders when the specific achievement's unlock state changes
+- Uses a selector internally to subscribe only to the relevant piece of state
+- Other achievements unlocking will not trigger a re-render
+
+## Notes
+
+- Must be used within an `AchievementsProvider` or the factory's `Provider`
+- This is a reactive hook - for non-reactive checks, use `engine.isUnlocked(id)` from `useAchievements()`
+- Commonly used with hidden/secret achievements to conditionally reveal information

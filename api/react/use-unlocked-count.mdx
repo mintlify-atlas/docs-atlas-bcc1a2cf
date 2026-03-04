@@ -1,0 +1,91 @@
+---
+title: useUnlockedCount
+description: Reactive hook that returns the total count of unlocked achievements
+---
+
+Returns the total number of unlocked achievements. The component re-renders only when the count changes (not on every achievement state change).
+
+## Signature
+
+```typescript
+function useUnlockedCount<TId extends string>(): number
+```
+
+## Returns
+
+<ResponseField name="count" type="number">
+  The total number of unlocked achievements.
+</ResponseField>
+
+## Example
+
+```tsx
+import { useUnlockedCount } from "./achievements";
+import { definitions } from "./achievements";
+
+function AchievementProgress() {
+  const count = useUnlockedCount();
+
+  return (
+    <div>
+      <span>Progress: {count} / {definitions.length}</span>
+      <ProgressBar value={(count / definitions.length) * 100} />
+    </div>
+  );
+}
+```
+
+```tsx
+import { useAchievements, useUnlockedCount } from "./achievements";
+import { definitions } from "./achievements";
+
+function Sidebar() {
+  const { reset } = useAchievements();
+  const count = useUnlockedCount();
+
+  return (
+    <aside>
+      <header>
+        <span>ACHIEVEMENTS</span>
+        <span>{count} / {definitions.length}</span>
+      </header>
+      
+      <AchievementList />
+      
+      <button onClick={reset}>Reset All</button>
+    </aside>
+  );
+}
+```
+
+```tsx
+import { useUnlockedCount } from "./achievements";
+import { definitions } from "./achievements";
+
+function CompletionBadge() {
+  const count = useUnlockedCount();
+  const total = definitions.length;
+  const percentage = Math.round((count / total) * 100);
+
+  return (
+    <div>
+      <h3>{percentage}% Complete</h3>
+      <p>{count} of {total} achievements unlocked</p>
+    </div>
+  );
+}
+```
+
+## Performance
+
+- **Optimized re-renders**: Only re-renders when the count changes
+- Uses a selector internally to subscribe only to the size of the unlocked set
+- Will not re-render when other achievement properties change (e.g., progress)
+- Will not re-render when achievements are unlocked/locked if the count stays the same
+
+## Notes
+
+- Must be used within an `AchievementsProvider` or the factory's `Provider`
+- This is more efficient than manually counting unlocked achievements in your component
+- Commonly used in progress indicators, headers, and summary displays
+- Pair with `definitions.length` to show completion percentage

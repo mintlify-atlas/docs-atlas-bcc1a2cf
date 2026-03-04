@@ -1,80 +1,374 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get up and running with achievements-manager in minutes with working examples
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+This guide will help you set up achievements-manager in your project. Choose the section that matches your framework:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="React" icon="react" href="#react">
+    React 19+ with hooks and factory
+  </Card>
+  
+  <Card title="Vanilla JS" icon="code" href="#vanilla--framework-agnostic">
+    Framework-agnostic core engine
+  </Card>
 </CardGroup>
 
+## React
+
+For React applications, use the factory pattern to create typed hooks and a Provider in one call.
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install achievements-react
+    ```
+  </Step>
+  
+  <Step title="Define your achievements">
+    Create a module-level file that exports your typed hooks and engine:
+    
+    ```ts src/achievements.ts
+    import { createAchievements, defineAchievements, localStorageAdapter } from 'achievements-react'
+
+    const definitions = defineAchievements([
+      { id: 'first-visit',  label: 'First Visit',  description: 'Open the app.'     },
+      { id: 'click-frenzy', label: 'Click Frenzy', description: 'Click 50 times.',
+        maxProgress: 50 },
+    ])
+
+    export type AchievementId = typeof definitions[number]['id']
+
+    export const { engine, Provider, useAchievements, useIsUnlocked, useProgress } =
+      createAchievements<AchievementId>({
+        definitions,
+        storage: localStorageAdapter('my-app'),
+      })
+    ```
+    
+    <Tip>
+      The `defineAchievements` helper provides full type inference for your achievement IDs. No manual type annotations needed!
+    </Tip>
+  </Step>
+  
+  <Step title="Wrap your app with the Provider">
+    Add the `Provider` to your root component:
+    
+    ```tsx src/main.tsx
+    import { Provider } from './achievements'
+    import { createRoot } from 'react-dom/client'
+    import App from './App'
+
+    createRoot(document.getElementById('root')!).render(
+      <Provider>
+        <App />
+      </Provider>,
+    )
+    ```
+  </Step>
+  
+  <Step title="Use the hooks in your components">
+    Import and use the pre-typed hooks anywhere inside the Provider:
+    
+    ```tsx src/components/Example.tsx
+    import { useAchievements, useIsUnlocked, useProgress } from '../achievements'
+
+    function Example() {
+      const { unlock, incrementProgress } = useAchievements()
+      const visited = useIsUnlocked('first-visit')
+      const { progress, max } = useProgress('click-frenzy')
+
+      return (
+        <>
+          <button onClick={() => unlock('first-visit')}>Visit</button>
+          <button onClick={() => incrementProgress('click-frenzy')}>
+            Click ({progress}/{max})
+          </button>
+          {visited && <p>Welcome back!</p>}
+        </>
+      )
+    }
+    ```
+    
+    <Note>
+      All hooks are fully typed with your custom `AchievementId` type. No generic annotations needed at the call site!
+    </Note>
+  </Step>
+</Steps>
+
+### Available React Hooks
+
+The factory returns these pre-typed hooks:
+
+| Hook | Returns | Description |
+|------|---------|-------------|
+| `useAchievements` | `AchievementEngine<TId>` | Full engine with all methods |
+| `useIsUnlocked(id)` | `boolean` | Re-renders only when this achievement's lock state changes |
+| `useProgress(id)` | `{ progress: number, max?: number }` | Re-renders only when this achievement's progress changes |
+| `useUnlockedCount` | `number` | Re-renders only when the total count changes |
+| `useAchievementToast` | `{ queue, dismiss }` | Toast queue for displaying notifications |
+| `useTamperDetected` | `string \| null` | Storage key that failed integrity check |
+
+## Vanilla / Framework-Agnostic
+
+For vanilla JavaScript, Vue, Svelte, or server-side use, work directly with the engine:
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install achievements
+    ```
+  </Step>
+  
+  <Step title="Create the engine">
+    ```ts
+    import { createAchievements, localStorageAdapter } from 'achievements'
+
+    const engine = createAchievements({
+      definitions: [
+        { id: 'first-visit', label: 'First Visit', description: 'Open the app.' },
+      ],
+      storage: localStorageAdapter('my-app'),
+      onUnlock: (id) => showNotification(id),
+    })
+
+    engine.unlock('first-visit')
+    engine.subscribe((state) => render(state))
+    ```
+  </Step>
+  
+  <Step title="Track achievements">
+    Call engine methods from anywhere in your app:
+    
+    ```ts
+    // Unlock achievements
+    engine.unlock('first-visit')
+    
+    // Track progress
+    engine.setProgress('click-frenzy', 25)
+    engine.incrementProgress('click-frenzy')
+    
+    // Collect items (idempotent)
+    engine.collectItem('explorer', 'module-core')
+    engine.collectItem('explorer', 'module-react')
+    
+    // Read state
+    const unlocked = engine.isUnlocked('first-visit')
+    const progress = engine.getProgress('click-frenzy')
+    const count = engine.getUnlockedCount()
+    ```
+  </Step>
+  
+  <Step title="Subscribe to changes">
+    Listen for state updates and render your UI:
+    
+    ```ts
+    engine.subscribe((state) => {
+      console.log('Unlocked:', [...state.unlockedIds])
+      console.log('Progress:', state.progress)
+      console.log('Toast queue:', state.toastQueue)
+      
+      // Update your UI
+      renderAchievements(state)
+    })
+    ```
+    
+    <Tip>
+      The subscribe callback receives a full state snapshot after every mutation. Use it to keep your UI in sync.
+    </Tip>
+  </Step>
+</Steps>
+
+### Engine API Methods
+
+#### Write Methods
+
+- `unlock(id)` - Unlocks an achievement
+- `setProgress(id, value)` - Sets absolute progress value
+- `incrementProgress(id)` - Increments progress by 1
+- `collectItem(id, item)` - Adds unique item to set
+- `setMaxProgress(id, max)` - Updates max progress at runtime
+- `dismissToast(id)` - Removes ID from toast queue
+- `reset()` - Wipes all state and storage
+
+#### Read Methods
+
+- `isUnlocked(id)` - Returns boolean
+- `getProgress(id)` - Returns current progress number
+- `getItems(id)` - Returns Set of collected items
+- `getUnlocked()` - Returns Set of all unlocked IDs
+- `getUnlockedCount()` - Returns number of unlocked
+- `getDefinition(id)` - Returns achievement definition
+- `getState()` - Returns full state snapshot
+
+## Achievement Definition Fields
+
+When defining achievements, use these fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | Yes | Unique identifier (inferred as literal type) |
+| `label` | `string` | Yes | Human-readable name for display |
+| `description` | `string` | Yes | Short description of unlock condition |
+| `maxProgress` | `number` | No | Enables progress tracking, auto-unlocks at threshold |
+| `hidden` | `boolean` | No | Hides achievement entirely until unlocked |
+| `hint` | `boolean` | No | Hides only description until unlocked |
+
+## Storage Adapters
+
+The library includes built-in storage adapters:
+
+<CodeGroup>
+```ts localStorage
+import { localStorageAdapter } from 'achievements'
+
+// With prefix (recommended)
+const storage = localStorageAdapter('my-app')
+// Keys: "my-app:unlocked", "my-app:progress", etc.
+
+// Without prefix
+const storage = localStorageAdapter()
+```
+
+```ts In-Memory
+import { inMemoryAdapter } from 'achievements'
+
+// Stores in Map, cleared on page reload
+const storage = inMemoryAdapter()
+```
+
+```ts Custom
+import type { StorageAdapter } from 'achievements'
+
+const myAdapter: StorageAdapter = {
+  get(key) {
+    return myStore.read(key)
+  },
+  set(key, value) {
+    myStore.write(key, value)
+  },
+  remove(key) {
+    myStore.delete(key)
+  },
+}
+```
+</CodeGroup>
+
+## Anti-Cheat & Tamper Detection
+
+Every persisted entry is stored with an integrity hash (FNV-1a by default). On load, the hash is recomputed:
+
+```ts
+const engine = createAchievements({
+  definitions,
+  storage: localStorageAdapter('my-app'),
+  onTamperDetected: (key) => {
+    console.warn('Tamper detected on key:', key)
+    // The corrupted entry is automatically wiped
+    // You can show a warning or reset progress
+  },
+})
+```
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Hashes are stored in localStorage as plain strings, so a determined user can still forge them. This is a friction layer, not cryptographic security.
 </Note>
+
+## Complete Example
+
+Here's a complete working example with progress tracking and toasts:
+
+```tsx Complete Example
+import { createAchievements, defineAchievements, localStorageAdapter } from 'achievements-react'
+import { useEffect } from 'react'
+
+// Define achievements
+const definitions = defineAchievements([
+  { id: 'first-visit', label: 'First Visit', description: 'Open the app.' },
+  { id: 'click-frenzy', label: 'Click Frenzy', description: 'Click 50 times.', maxProgress: 50 },
+  { id: 'night-owl', label: 'Night Owl', description: 'Use the app after midnight.', hidden: true },
+])
+
+export type AchievementId = typeof definitions[number]['id']
+
+export const {
+  engine,
+  Provider,
+  useAchievements,
+  useIsUnlocked,
+  useProgress,
+  useAchievementToast,
+  useUnlockedCount,
+} = createAchievements<AchievementId>({
+  definitions,
+  storage: localStorageAdapter('demo-app'),
+  onUnlock: (id) => console.log('🎉 Unlocked:', id),
+})
+
+// Toast component
+function AchievementToast() {
+  const { queue, dismiss } = useAchievementToast()
+  const id = queue[0]
+  const def = id ? engine.getDefinition(id) : undefined
+
+  useEffect(() => {
+    if (!id) return
+    const timer = setTimeout(() => dismiss(id), 3000)
+    return () => clearTimeout(timer)
+  }, [id, dismiss])
+
+  if (!id || !def) return null
+
+  return (
+    <div className="toast">
+      <strong>{def.label}</strong>
+      <p>{def.description}</p>
+      <button onClick={() => dismiss(id)}>×</button>
+    </div>
+  )
+}
+
+// Main component
+function App() {
+  const { unlock, incrementProgress } = useAchievements()
+  const { progress, max } = useProgress('click-frenzy')
+  const count = useUnlockedCount()
+
+  return (
+    <Provider>
+      <AchievementToast />
+      <h1>Achievements Demo</h1>
+      <p>Unlocked: {count} / {definitions.length}</p>
+      
+      <button onClick={() => unlock('first-visit')}>
+        Unlock First Visit
+      </button>
+      
+      <button onClick={() => incrementProgress('click-frenzy')}>
+        Click Me ({progress}/{max})
+      </button>
+    </Provider>
+  )
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core API Reference" icon="book" href="/api/core/create-achievements">
+    Complete engine API documentation
+  </Card>
+  
+  <Card title="React Hooks" icon="react" href="/api/react/use-achievements">
+    Detailed guide to all React hooks
+  </Card>
+  
+  <Card title="Storage Adapters" icon="database" href="/guides/custom-storage">
+    Learn about storage backends and custom adapters
+  </Card>
+  
+  <Card title="Anti-cheat" icon="shield" href="/concepts/anti-cheat">
+    Tamper detection and hash adapters
+  </Card>
+</CardGroup>

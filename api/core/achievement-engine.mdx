@@ -1,0 +1,450 @@
+---
+title: AchievementEngine
+description: Methods for managing achievements, progress tracking, and state subscriptions
+---
+
+The `AchievementEngine` is the object returned by [`createAchievements()`](/api/core/create-achievements). It provides methods for unlocking achievements, tracking progress, and subscribing to state changes.
+
+## Write Methods
+
+### unlock
+
+```typescript
+unlock(id: TId): void
+```
+
+Unlock an achievement. No-op if already unlocked.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID to unlock
+</ParamField>
+
+**Example:**
+
+```typescript
+engine.unlock('first-login');
+```
+
+**Behavior:**
+- Verifies stored data integrity before writing
+- Adds the ID to the unlocked set
+- Adds the ID to the toast queue for notifications
+- Persists to storage with integrity hash
+- Calls `onUnlock` callback if configured
+- Notifies all subscribers
+- If already unlocked, this is a no-op
+
+---
+
+### setProgress
+
+```typescript
+setProgress(id: TId, value: number): void
+```
+
+Set progress to an absolute value. Auto-unlocks if value >= maxProgress.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ParamField path="value" type="number" required>
+  The new progress value (clamped between 0 and maxProgress)
+</ParamField>
+
+**Example:**
+
+```typescript
+engine.setProgress('complete-profile', 3);
+```
+
+**Behavior:**
+- Only works for achievements with `maxProgress` defined
+- Value is clamped to `[0, maxProgress]`
+- Respects runtime `maxProgress` overrides from `setMaxProgress()`
+- Auto-unlocks when progress reaches `maxProgress`
+- Persists to storage and notifies subscribers
+
+---
+
+### incrementProgress
+
+```typescript
+incrementProgress(id: TId): void
+```
+
+Increment progress by 1. Auto-unlocks if the new value >= maxProgress.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+**Example:**
+
+```typescript
+engine.incrementProgress('complete-profile');
+```
+
+**Behavior:**
+- Equivalent to `setProgress(id, getProgress(id) + 1)`
+- Auto-unlocks when progress reaches `maxProgress`
+
+---
+
+### collectItem
+
+```typescript
+collectItem(id: TId, item: string): void
+```
+
+Add a unique string item to this achievement's tracked set. Calls `setProgress(id, items.size)` after insertion. Idempotent.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ParamField path="item" type="string" required>
+  A unique identifier for the item being collected
+</ParamField>
+
+**Example:**
+
+```typescript
+engine.collectItem('visit-all-pages', '/about');
+engine.collectItem('visit-all-pages', '/contact');
+engine.collectItem('visit-all-pages', '/about'); // No-op, already collected
+```
+
+**Behavior:**
+- Maintains a Set of unique items per achievement
+- Only increments progress if the item is new (idempotent)
+- Automatically updates progress to match the set size
+- Persists items to storage with integrity hash
+- Auto-unlocks when set size reaches `maxProgress`
+
+---
+
+### setMaxProgress
+
+```typescript
+setMaxProgress(id: TId, max: number): void
+```
+
+Update the maxProgress for an achievement at runtime. Enables auto-unlock when progress reaches the new max.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ParamField path="max" type="number" required>
+  The new maximum progress value
+</ParamField>
+
+**Example:**
+
+```typescript
+// Achievement defined with maxProgress: 10
+// But actual number of items is determined at runtime
+engine.setMaxProgress('collect-all-badges', badgeCount);
+```
+
+**Behavior:**
+- Overrides the `maxProgress` from the achievement definition
+- Not persisted (runtime-only)
+- Re-evaluates current progress against the new max
+- Auto-unlocks if current progress >= new max
+
+---
+
+### dismissToast
+
+```typescript
+dismissToast(id: TId): void
+```
+
+Remove an ID from the toast queue (call after displaying the notification).
+
+<ParamField path="id" type="TId" required>
+  The achievement ID to remove from the toast queue
+</ParamField>
+
+**Example:**
+
+```typescript
+const state = engine.getState();
+if (state.toastQueue.length > 0) {
+  const id = state.toastQueue[0];
+  showNotification(engine.getDefinition(id));
+  engine.dismissToast(id);
+}
+```
+
+**Behavior:**
+- Removes the ID from the in-memory toast queue
+- Notifies subscribers
+- Toast queue is not persisted (resets on page reload)
+
+---
+
+### reset
+
+```typescript
+reset(): void
+```
+
+Wipe all state from memory and storage.
+
+**Example:**
+
+```typescript
+engine.reset();
+```
+
+**Behavior:**
+- Clears all unlocked achievements
+- Clears all progress values
+- Clears all collected items
+- Clears the toast queue
+- Removes all data from storage (including hash keys)
+- Notifies subscribers
+
+---
+
+## Read Methods
+
+### isUnlocked
+
+```typescript
+isUnlocked(id: TId): boolean
+```
+
+Check if an achievement is unlocked.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ResponseField name="unlocked" type="boolean">
+  True if the achievement is unlocked
+</ResponseField>
+
+**Example:**
+
+```typescript
+if (engine.isUnlocked('first-login')) {
+  console.log('User has logged in before');
+}
+```
+
+---
+
+### getProgress
+
+```typescript
+getProgress(id: TId): number
+```
+
+Get the current progress value for an achievement.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ResponseField name="progress" type="number">
+  Current progress value (0 if not set)
+</ResponseField>
+
+**Example:**
+
+```typescript
+const progress = engine.getProgress('complete-profile');
+console.log(`Profile: ${progress}/5 fields completed`);
+```
+
+---
+
+### getItems
+
+```typescript
+getItems(id: TId): ReadonlySet<string>
+```
+
+Return the set of items collected for this achievement via `collectItem()`.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ResponseField name="items" type="ReadonlySet<string>">
+  Set of collected item identifiers (empty set if none collected)
+</ResponseField>
+
+**Example:**
+
+```typescript
+const visitedPages = engine.getItems('visit-all-pages');
+if (visitedPages.has('/about')) {
+  console.log('User has visited the about page');
+}
+```
+
+---
+
+### getUnlocked
+
+```typescript
+getUnlocked(): ReadonlySet<TId>
+```
+
+Get all unlocked achievement IDs.
+
+<ResponseField name="unlockedIds" type="ReadonlySet<TId>">
+  Set of all unlocked achievement IDs
+</ResponseField>
+
+**Example:**
+
+```typescript
+const unlocked = engine.getUnlocked();
+console.log(`Unlocked ${unlocked.size} achievements`);
+```
+
+---
+
+### getUnlockedCount
+
+```typescript
+getUnlockedCount(): number
+```
+
+Get the number of unlocked achievements.
+
+<ResponseField name="count" type="number">
+  Number of unlocked achievements
+</ResponseField>
+
+**Example:**
+
+```typescript
+const count = engine.getUnlockedCount();
+console.log(`${count}/${definitions.length} achievements unlocked`);
+```
+
+---
+
+### getState
+
+```typescript
+getState(): AchievementState<TId>
+```
+
+Get a snapshot of the current achievement state.
+
+<ResponseField name="state" type="AchievementState<TId>">
+  Complete state snapshot including unlocked IDs, progress, and toast queue
+  
+  <Expandable title="AchievementState properties">
+    <ResponseField name="unlockedIds" type="ReadonlySet<TId>">
+      Set of all unlocked achievement IDs
+    </ResponseField>
+    
+    <ResponseField name="progress" type="Readonly<Record<string, number>>">
+      Progress values for achievements with maxProgress
+    </ResponseField>
+    
+    <ResponseField name="toastQueue" type="ReadonlyArray<TId>">
+      IDs waiting to be shown as notifications, ordered oldest-first
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+
+```typescript
+const state = engine.getState();
+console.log('Unlocked:', state.unlockedIds);
+console.log('Progress:', state.progress);
+console.log('Pending toasts:', state.toastQueue);
+```
+
+---
+
+### getDefinition
+
+```typescript
+getDefinition(id: TId): AchievementDef<TId> | undefined
+```
+
+Get the definition for a specific achievement.
+
+<ParamField path="id" type="TId" required>
+  The achievement ID
+</ParamField>
+
+<ResponseField name="definition" type="AchievementDef<TId> | undefined">
+  The achievement definition, or undefined if not found
+</ResponseField>
+
+**Example:**
+
+```typescript
+const def = engine.getDefinition('first-login');
+if (def) {
+  console.log(`${def.label}: ${def.description}`);
+}
+```
+
+---
+
+## Reactivity
+
+### subscribe
+
+```typescript
+subscribe(listener: (state: AchievementState<TId>) => void): () => void
+```
+
+Subscribe to state changes. The listener is called after every mutation. Returns an unsubscribe function.
+
+<ParamField path="listener" type="(state: AchievementState<TId>) => void" required>
+  Callback function invoked with the new state after any change
+</ParamField>
+
+<ResponseField name="unsubscribe" type="() => void">
+  Function to remove the listener
+</ResponseField>
+
+**Example:**
+
+```typescript
+const unsubscribe = engine.subscribe((state) => {
+  console.log('State changed:', state);
+  
+  // Show toast notifications
+  state.toastQueue.forEach((id) => {
+    const def = engine.getDefinition(id);
+    showNotification(def);
+    engine.dismissToast(id);
+  });
+});
+
+// Later: stop listening
+unsubscribe();
+```
+
+**Behavior:**
+- Listener is called synchronously after every state mutation
+- State changes that trigger subscription:
+  - `unlock()` - unlocked set changed
+  - `setProgress()` - progress changed (or auto-unlock occurred)
+  - `incrementProgress()` - progress changed (or auto-unlock occurred)
+  - `collectItem()` - items and progress changed (or auto-unlock occurred)
+  - `dismissToast()` - toast queue changed
+  - `reset()` - all state cleared
+- Multiple subscribers are supported
+- Toast queue is NOT persisted, so it's empty on page reload
+
+## See Also
+
+- [createAchievements](/api/core/create-achievements) - Create an engine instance
+- [Types](/api/core/types) - Type definitions for AchievementState and AchievementDef

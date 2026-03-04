@@ -1,0 +1,192 @@
+---
+title: Installation
+description: Install achievements-manager for React or vanilla JavaScript projects
+---
+
+The achievements-manager library is distributed as two separate npm packages, depending on whether you're using React or another framework.
+
+## Which Package Do I Need?
+
+<CardGroup cols={2}>
+  <Card title="achievements-react" icon="react">
+    **For React 19+ applications**
+    
+    Includes the core engine plus React Provider, hooks, and factory. This is the only package you need for React projects.
+  </Card>
+  
+  <Card title="achievements" icon="code">
+    **For everything else**
+    
+    Framework-agnostic core engine for vanilla JS, Vue, Svelte, server-side, or any non-React environment.
+  </Card>
+</CardGroup>
+
+<Note>
+  If you're in a React app, install `achievements-react` - it includes the core. If you're working outside React (vanilla JS, a server, Svelte, Vue...) install `achievements` directly.
+</Note>
+
+## Installing for React
+
+For React 19+ applications, install the `achievements-react` package:
+
+<CodeGroup>
+```bash npm
+npm install achievements-react
+```
+
+```bash pnpm
+pnpm add achievements-react
+```
+
+```bash yarn
+yarn add achievements-react
+```
+
+```bash bun
+bun add achievements-react
+```
+</CodeGroup>
+
+### Peer Requirements
+
+The React package requires **React >= 19.0.0** as a peer dependency. The `achievements` core is bundled - no separate install needed.
+
+```json package.json
+{
+  "dependencies": {
+    "achievements-react": "^0.3.0",
+    "react": "^19.0.0"
+  }
+}
+```
+
+## Installing for Vanilla JS / Other Frameworks
+
+For vanilla JavaScript, Vue, Svelte, or any other framework, install the core `achievements` package:
+
+<CodeGroup>
+```bash npm
+npm install achievements
+```
+
+```bash pnpm
+pnpm add achievements
+```
+
+```bash yarn
+yarn add achievements
+```
+
+```bash bun
+bun add achievements
+```
+</CodeGroup>
+
+### Zero Dependencies
+
+The core package has **zero runtime dependencies**. It ships only ESM format and requires a modern bundler or environment that supports ES modules.
+
+```json package.json
+{
+  "dependencies": {
+    "achievements": "^0.3.0"
+  }
+}
+```
+
+## TypeScript Support
+
+Both packages are written in TypeScript and ship with complete type definitions. No additional `@types` packages are needed.
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2020"
+  }
+}
+```
+
+<Tip>
+  The library uses literal type inference to derive your achievement IDs from definitions, giving you autocomplete and type safety with zero boilerplate.
+</Tip>
+
+## Package Exports
+
+Both packages use modern ESM exports:
+
+### achievements (core)
+
+```ts
+import {
+  createAchievements,
+  defineAchievements,
+  localStorageAdapter,
+  inMemoryAdapter,
+  fnv1aHashAdapter,
+  type AchievementDef,
+  type AchievementState,
+  type AchievementEngine,
+  type StorageAdapter,
+  type HashAdapter,
+} from "achievements";
+```
+
+### achievements-react
+
+```ts
+import {
+  // Factory & components
+  createAchievements,
+  AchievementsProvider,
+  
+  // Hooks
+  useAchievements,
+  useIsUnlocked,
+  useProgress,
+  useAchievementToast,
+  useUnlockedCount,
+  useTamperDetected,
+  
+  // Re-exported from core
+  defineAchievements,
+  localStorageAdapter,
+  inMemoryAdapter,
+  fnv1aHashAdapter,
+  
+  // Types
+  type AchievementDef,
+  type AchievementState,
+  type AchievementEngine,
+  type StorageAdapter,
+  type HashAdapter,
+  type AchievementsConfig,
+} from "achievements-react";
+```
+
+<Note>
+  `achievements-react` re-exports everything from `achievements`, so you rarely need to import from two packages.
+</Note>
+
+## Verifying Installation
+
+After installation, verify the packages are available:
+
+<CodeGroup>
+```ts React
+import { createAchievements } from "achievements-react";
+console.log(typeof createAchievements); // "function"
+```
+
+```ts Vanilla
+import { createAchievements } from "achievements";
+console.log(typeof createAchievements); // "function"
+```
+</CodeGroup>
+
+## Next Steps
+
+<Card title="Quick Start" icon="rocket" href="/quickstart">
+  Get up and running with a complete working example for React and vanilla JavaScript
+</Card>

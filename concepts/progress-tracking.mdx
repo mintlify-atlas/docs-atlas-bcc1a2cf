@@ -1,0 +1,276 @@
+---
+title: Progress Tracking
+description: Track incremental progress toward achievement completion
+---
+
+## Overview
+
+Progress tracking allows achievements to be unlocked incrementally as players make progress toward a goal. When an achievement has a `maxProgress` value, it automatically unlocks when the progress reaches that threshold.
+
+## Enabling Progress Tracking
+
+To enable progress tracking, add the `maxProgress` property to an achievement definition:
+
+```typescript
+const achievements = defineAchievements([
+  {
+    id: 'win-10-matches',
+    label: 'Competitor',
+    description: 'Win 10 matches',
+    maxProgress: 10, // Unlocks when progress reaches 10
+  },
+] as const);
+```
+
+<Info>
+Achievements without a `maxProgress` property cannot track progress. Progress methods will be no-ops for these achievements.
+</Info>
+
+## Setting Progress
+
+Use `setProgress()` to set the progress to an absolute value:
+
+```typescript
+// Set progress to 5 out of 10
+engine.setProgress('win-10-matches', 5);
+
+// Check current progress
+const current = engine.getProgress('win-10-matches'); // 5
+```
+
+### Function Signature
+
+```typescript
+// From packages/core/src/types.ts
+/** Set progress to an absolute value. Auto-unlocks if value >= maxProgress. */
+setProgress(id: TId, value: number): void;
+```
+
+### Behavior
+
+- Values are clamped between `0` and `maxProgress`
+- If the new value is >= `maxProgress`, the achievement **auto-unlocks**
+- Progress is persisted to storage automatically
+- Subscribers are notified of the change
+
+<Note>
+From the implementation (`packages/core/src/engine.ts:177-194`):
+```typescript
+const clamped = Math.max(0, Math.min(value, effectiveMax));
+progress[id] = clamped;
+persistProgress();
+
+if (clamped >= effectiveMax && !unlockedIds.has(id)) {
+  unlock(id); // Auto-unlock triggered
+  return;
+}
+```
+</Note>
+
+## Incrementing Progress
+
+For simpler use cases, use `incrementProgress()` to add 1 to the current progress:
+
+```typescript
+// Increment by 1 each time a match is won
+function onMatchWin() {
+  engine.incrementProgress('win-10-matches');
+}
+```
+
+### Function Signature
+
+```typescript
+// From packages/core/src/types.ts
+/** Increment progress by 1. Auto-unlocks if the new value >= maxProgress. */
+incrementProgress(id: TId): void;
+```
+
+### Implementation
+
+```typescript
+// From packages/core/src/engine.ts:212-214
+function incrementProgress(id: TId): void {
+  setProgress(id, getProgress(id) + 1);
+}
+```
+
+## Collecting Items
+
+The `collectItem()` method tracks unique string items and automatically updates progress based on the set size:
+
+```typescript
+const achievements = defineAchievements([
+  {
+    id: 'collect-badges',
+    label: 'Badge Collector',
+    description: 'Collect all 5 badges',
+    maxProgress: 5,
+  },
+] as const);
+
+const engine = createAchievements({ definitions: achievements });
+
+// Collect unique items
+engine.collectItem('collect-badges', 'bronze-badge');
+engine.collectItem('collect-badges', 'silver-badge');
+engine.collectItem('collect-badges', 'bronze-badge'); // Idempotent - no change
+
+// Progress is automatically set to 2 (unique items)
+engine.getProgress('collect-badges'); // 2
+
+// Retrieve all collected items
+const items = engine.getItems('collect-badges');
+console.log([...items]); // ['bronze-badge', 'silver-badge']
+```
+
+### Function Signature
+
+```typescript
+// From packages/core/src/types.ts
+/**
+ * Add a unique string item to this achievement's tracked set.
+ * Calls setProgress(id, items.size) after insertion. Idempotent.
+ */
+collectItem(id: TId, item: string): void;
+
+/** Return the set of items collected for this achievement via collectItem(). */
+getItems(id: TId): ReadonlySet<string>;
+```
+
+### Implementation Details
+
+```typescript
+// From packages/core/src/engine.ts:196-204
+function collectItem(id: TId, item: string): void {
+  if (!items[id]) items[id] = new Set();
+  const set = items[id];
+  const prevSize = set.size;
+  set.add(item);
+  if (set.size === prevSize) return; // idempotent — item already present
+  persistItems();
+  setProgress(id, set.size); // Progress = number of unique items
+}
+```
+
+<Warning>
+`collectItem()` is idempotent. Adding the same item multiple times will not increase progress.
+</Warning>
+
+## Auto-Unlock Behavior
+
+When progress reaches or exceeds `maxProgress`, the achievement automatically unlocks:
+
+```typescript
+const engine = createAchievements({
+  definitions: [
+    {
+      id: 'level-up',
+      label: 'Level 10',
+      description: 'Reach level 10',
+      maxProgress: 10,
+    },
+  ],
+  onUnlock: (id) => {
+    console.log(`Achievement unlocked: ${id}`);
+  },
+});
+
+engine.setProgress('level-up', 10);
+// Console: "Achievement unlocked: level-up"
+// Achievement is now unlocked automatically
+```
+
+<Accordion title="How Auto-Unlock Works Internally">
+From `packages/core/src/engine.ts:187-190`:
+
+```typescript
+if (clamped >= effectiveMax && !unlockedIds.has(id)) {
+  // unlock() calls notify() internally, so we return to avoid double-notify
+  unlock(id);
+  return;
+}
+```
+
+The engine checks if the clamped progress value meets or exceeds the max. If so, it calls `unlock()` internally, which:
+1. Adds the ID to `unlockedIds`
+2. Adds the ID to the toast queue for notifications
+3. Persists the unlocked state
+4. Triggers the `onUnlock` callback
+5. Notifies all subscribers
+</Accordion>
+
+## Runtime Max Progress Updates
+
+You can dynamically update an achievement's `maxProgress` at runtime using `setMaxProgress()`:
+
+```typescript
+const engine = createAchievements({
+  definitions: [
+    {
+      id: 'dynamic-goal',
+      label: 'Dynamic Achievement',
+      description: 'Complete the challenge',
+      maxProgress: 10,
+    },
+  ],
+});
+
+// Update max progress at runtime (e.g., difficulty adjustment)
+engine.setMaxProgress('dynamic-goal', 20);
+
+// Current progress is re-evaluated against the new max
+engine.setProgress('dynamic-goal', 15);
+// Still locked (15 < 20)
+
+engine.setProgress('dynamic-goal', 20);
+// Auto-unlocks (20 >= 20)
+```
+
+### Function Signature
+
+```typescript
+// From packages/core/src/types.ts
+/**
+ * Update the maxProgress for an achievement at runtime.
+ * Enables auto-unlock when progress reaches the new max.
+ */
+setMaxProgress(id: TId, max: number): void;
+```
+
+### Implementation
+
+```typescript
+// From packages/core/src/engine.ts:206-210
+function setMaxProgress(id: TId, max: number): void {
+  runtimeMaxProgress[id] = max;
+  // Re-evaluate current progress against the new max (triggers auto-unlock if met)
+  setProgress(id, getProgress(id));
+}
+```
+
+<Note>
+Runtime max progress overrides are **not persisted** to storage. They only exist in memory for the current session.
+</Note>
+
+## Reading Progress
+
+Retrieve the current progress value using `getProgress()`:
+
+```typescript
+const current = engine.getProgress('win-10-matches');
+console.log(`Progress: ${current}/10`);
+```
+
+### Function Signature
+
+```typescript
+// From packages/core/src/engine.ts:237-239
+function getProgress(id: TId): number {
+  return progress[id] ?? 0;
+}
+```
+
+<Info>
+Progress defaults to `0` if never set or if the achievement doesn't have `maxProgress` defined.
+</Info>

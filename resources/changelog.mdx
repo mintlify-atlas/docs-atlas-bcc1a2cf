@@ -1,0 +1,222 @@
+---
+title: Changelog
+description: Version history and release notes for achievements-manager
+---
+
+All notable changes to the achievements-manager library are documented here.
+
+<Accordion>
+  <AccordionItem title="0.3.0 — February 27, 2026">
+    ### Features
+
+    **Anti-cheat system** — pluggable `HashAdapter` interface for tamper detection. Pass a `hashAdapter` to `createAchievements` / `createAchievementsFactory` to sign and verify stored state. A built-in `WebCryptoHashAdapter` (HMAC-SHA-256) is provided out of the box. When tamper is detected, `onTamperDetected` fires with the offending key.
+
+    ```ts
+    const { engine, Provider } = createAchievements({
+      definitions,
+      storage: localStorageAdapter("my-app"),
+      hash: fnv1aHashAdapter(), // or custom HashAdapter
+      onTamperDetected: (key) => console.warn(`Tamper: ${key}`),
+    });
+    ```
+
+    ### Bug Fixes
+
+    **Anti-cheat item restoration** — when any storage field fails integrity verification, all three keys (`unlocked`, `progress`, `items`) are now wiped atomically after hydration instead of individually. This prevents partial state (e.g. items cleared but stale progress remaining) after a tamper event.
+
+    ### Documentation
+
+    Added comprehensive README for `achievements` (core) and `achievements-react` packages, and the root monorepo.
+  </AccordionItem>
+
+  <AccordionItem title="0.2.0 — February 26, 2026">
+    ### Features
+
+    **`collectItem(id, item)`** — adds a string to a persistent `Set<string>` tied to an achievement and calls `setProgress(id, set.size)`. Idempotent: duplicate items are ignored. Items are persisted to storage under the key `"items"` and hydrated on init.
+
+    ```ts
+    engine.collectItem("explorer", "module-core");
+    engine.collectItem("explorer", "module-react");
+    engine.collectItem("explorer", "module-core"); // No-op
+    console.log(engine.getItems("explorer").size); // 2
+    ```
+
+    **`getItems(id)`** — returns a `ReadonlySet<string>` snapshot of collected items for an achievement.
+
+    ```ts
+    const items = engine.getItems("explorer");
+    console.log([...items]); // ["module-core", "module-react"]
+    ```
+
+    **`setMaxProgress(id, max)`** — updates the effective `maxProgress` at runtime (in-memory only). Re-evaluates current progress immediately to trigger auto-unlock if the threshold is already met. Enables achievements whose total is only known at runtime (e.g. server-driven counts).
+
+    ```ts
+    // Achievement defined without static maxProgress
+    const response = await fetch("/api/tasks");
+    const tasks = await response.json();
+    engine.setMaxProgress("full-coverage", tasks.length);
+    ```
+
+    **`reset()`** now also clears `items` state and removes the `"items"` storage key.
+
+    ### Bug Fixes
+
+    **`useEngineState`** — removed `selector` from the `useEffect` dependency array. Inline selector functions are recreated on every render; having them as a dependency caused the effect to re-run each render, which called `setValue` with a new reference-type value (e.g. the `toastQueue` array), triggering another render — an infinite loop. The selector is now stored in a ref so the effect only re-runs when `engine` changes.
+
+    **`useAchievementToast`** — replaced `engine.dismissToast.bind(engine)` with `engine.dismissToast`. The `bind` call created a new function object on every render, making `dismiss` an unstable `useEffect` dependency in consumers (e.g. `Toast`) and causing the dismiss timer to reset on every render.
+
+    ### Migration Notes
+
+    - If you call `reset()`, it now clears items in addition to unlocked/progress
+    - No breaking changes to existing API surface
+    - New methods are additive and optional
+  </AccordionItem>
+
+  <AccordionItem title="0.1.0 — February 25, 2026">
+    ### Features
+
+    Initial release of the achievements-manager library.
+
+    **`defineAchievements`** utility for declaring typed achievement definitions.
+
+    ```ts
+    const definitions = defineAchievements([
+      { id: "first-visit", label: "First Visit", description: "Open the app." },
+      { id: "click-frenzy", label: "Click Frenzy", description: "Click 50 times.", maxProgress: 50 },
+    ]);
+
+    type AchievementId = (typeof definitions)[number]["id"];
+    ```
+
+    **`useUnlockedCount`** React hook for tracking the number of unlocked achievements.
+
+    ```tsx
+    const count = useUnlockedCount();
+    return <p>{count} / {definitions.length} unlocked</p>;
+    ```
+
+    Standalone `achievements-react` package with React 19+ bindings.
+
+    ```tsx
+    const { engine, Provider, useAchievements, useIsUnlocked, useProgress } =
+      createAchievements<AchievementId>({
+        definitions,
+        storage: localStorageAdapter("my-app"),
+      });
+    ```
+
+    Framework-agnostic `achievements` core library.
+
+    ```ts
+    import { createAchievements, localStorageAdapter } from "achievements";
+
+    const engine = createAchievements({
+      definitions,
+      storage: localStorageAdapter("my-app"),
+      onUnlock: (id) => showNotification(id),
+    });
+    ```
+
+    Rolldown-based build pipeline with TypeScript declarations.
+
+    ### Core Features
+
+    - Type-safe achievement IDs with literal type inference
+    - Progress tracking with auto-unlock at threshold
+    - LocalStorage and in-memory storage adapters
+    - Toast notification queue
+    - Hidden and hint-based achievements
+    - Framework-agnostic engine with React bindings
+    - Zero runtime dependencies in core package
+    - Fine-grained React hooks (per-achievement reactivity)
+
+    ### Packages
+
+    - `achievements` (core) — Framework-agnostic engine
+    - `achievements-react` — React 19+ bindings (includes core)
+
+    ### Development
+
+    - pnpm workspace monorepo
+    - Example Vite + React app in `apps/example`
+    - Oxlint for linting, oxfmt for formatting
+    - TypeScript with strict mode
+  </AccordionItem>
+</Accordion>
+
+## Release Channels
+
+### Stable
+
+Install the latest stable version:
+
+```bash
+pnpm add achievements-react
+# or
+npm install achievements-react
+```
+
+### Canary
+
+Experimental features and upcoming changes:
+
+```bash
+pnpm add achievements-react@canary
+```
+
+Canary builds may contain breaking changes and are not recommended for production.
+
+## Versioning Policy
+
+This project follows [Semantic Versioning](https://semver.org/):
+
+- **Major** (1.0.0 → 2.0.0): Breaking changes to public API
+- **Minor** (1.0.0 → 1.1.0): New features, backward compatible
+- **Patch** (1.0.0 → 1.0.1): Bug fixes, backward compatible
+
+### Breaking Changes
+
+Breaking changes are documented in:
+
+1. This changelog under the major version
+2. The [Migration Guide](/resources/migration-guide)
+3. GitHub release notes
+
+### Deprecation Policy
+
+Before removing features:
+
+1. Feature marked as deprecated in a minor release
+2. Console warnings added with upgrade path
+3. Minimum one major version before removal
+4. Migration guide provided
+
+## Upgrade Recommendations
+
+### Patch Updates
+
+Safe to upgrade immediately. No code changes required.
+
+```bash
+pnpm update achievements-react
+```
+
+### Minor Updates
+
+Review changelog for new features. Existing code continues to work.
+
+```bash
+pnpm add achievements-react@latest
+```
+
+### Major Updates
+
+Read the [Migration Guide](/resources/migration-guide) before upgrading:
+
+```bash
+pnpm add achievements-react@2.0.0
+```
+
+## Contributing
+
+See [Contributing Guide](/resources/contributing) for development workflow and release process.

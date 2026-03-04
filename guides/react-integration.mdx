@@ -1,0 +1,478 @@
+---
+title: React Integration Guide
+description: Complete guide for using achievements-manager with React hooks and context
+---
+
+This guide shows you how to use the `achievements-react` package to integrate achievements into your React application with hooks and context.
+
+## Installation
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install achievements-react
+    ```
+
+    The React package re-exports everything from the core package, so you don't need to install both.
+  </Step>
+
+  <Step title="Define your achievements">
+    Create a file (e.g., `src/achievements.ts`) to define and initialize your achievements:
+
+    ```typescript
+    import { defineAchievements, createAchievements, localStorageAdapter } from 'achievements-react';
+
+    export const definitions = defineAchievements([
+      {
+        id: "first-visit",
+        label: "First Contact",
+        description: "Initialized session for the first time.",
+      },
+      {
+        id: "returning",
+        label: "Persistent Agent",
+        description: "Returned for a subsequent session.",
+      },
+      {
+        id: "night-owl",
+        label: "Night Protocol",
+        description: "Operating between 00:00 and 05:00.",
+        hidden: true,
+      },
+      {
+        id: "click-frenzy",
+        label: "Input Overflow",
+        description: "Registered 50 consecutive inputs.",
+        maxProgress: 50,
+      },
+    ]);
+
+    // Derive the achievement ID type from your definitions
+    export type AchievementId = (typeof definitions)[number]["id"];
+
+    // Create the achievement system with typed hooks
+    export const {
+      engine,
+      Provider,
+      useAchievements,
+      useIsUnlocked,
+      useProgress,
+      useAchievementToast,
+      useUnlockedCount,
+      useTamperDetected,
+    } = createAchievements<AchievementId>({
+      definitions,
+      storage: localStorageAdapter('my-app'),
+    });
+    ```
+  </Step>
+
+  <Step title="Wrap your app with the Provider">
+    ```tsx
+    import { StrictMode } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Provider } from './achievements';
+    import App from './App';
+
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <Provider>
+          <App />
+        </Provider>
+      </StrictMode>
+    );
+    ```
+  </Step>
+</Steps>
+
+## Using Hooks
+
+The factory pattern from `createAchievements()` returns fully-typed hooks that are bound to your achievement IDs. You never need to write `useHook<AchievementId>()` again.
+
+### useAchievements()
+
+Get the engine instance for imperative operations:
+
+```tsx
+import { useAchievements } from './achievements';
+
+function MyComponent() {
+  const { unlock, incrementProgress, setProgress, reset } = useAchievements();
+
+  return (
+    <button onClick={() => unlock('first-visit')}>
+      Unlock Achievement
+    </button>
+  );
+}
+```
+
+**Available methods:**
+- `unlock(id)` - Unlock an achievement
+- `setProgress(id, value)` - Set absolute progress value
+- `incrementProgress(id)` - Increment progress by 1
+- `collectItem(id, item)` - Add unique item to tracked set
+- `setMaxProgress(id, max)` - Update max progress at runtime
+- `dismissToast(id)` - Remove achievement from toast queue
+- `reset()` - Clear all state
+- `isUnlocked(id)` - Check if unlocked (non-reactive)
+- `getProgress(id)` - Get current progress (non-reactive)
+- `getItems(id)` - Get collected items set (non-reactive)
+- `getState()` - Get full state snapshot (non-reactive)
+- `getDefinition(id)` - Get achievement definition
+
+### useIsUnlocked(id)
+
+Reactive boolean that re-renders only when the specific achievement's lock state changes:
+
+```tsx
+import { useIsUnlocked } from './achievements';
+
+function AchievementBadge() {
+  const unlocked = useIsUnlocked('night-owl');
+
+  return (
+    <div className={unlocked ? 'badge-unlocked' : 'badge-locked'}>
+      {unlocked ? '✓ Unlocked' : 'Locked'}
+    </div>
+  );
+}
+```
+
+### useProgress(id)
+
+Reactive progress tracker that re-renders only when the specific achievement's progress changes:
+
+```tsx
+import { useProgress, useIsUnlocked, useAchievements } from './achievements';
+import { ProgressBar } from './ui/progress';
+
+function ClickFrenzySection() {
+  const { incrementProgress } = useAchievements();
+  const { progress, max = 50 } = useProgress('click-frenzy');
+  const unlocked = useIsUnlocked('click-frenzy');
+
+  return (
+    <div>
+      <button 
+        onClick={() => incrementProgress('click-frenzy')}
+        disabled={unlocked}
+      >
+        Click Me ({progress} / {max})
+      </button>
+      
+      <ProgressBar value={(progress / max) * 100} />
+    </div>
+  );
+}
+```
+
+**Returns:** `{ progress: number, max: number | undefined }`
+
+### useUnlockedCount()
+
+Reactive count that re-renders only when the total number of unlocked achievements changes:
+
+```tsx
+import { useUnlockedCount } from './achievements';
+import { definitions } from './achievements';
+
+function AchievementCounter() {
+  const count = useUnlockedCount();
+  
+  return (
+    <span>
+      {count} / {definitions.length} Achievements
+    </span>
+  );
+}
+```
+
+### useAchievementToast()
+
+Manage achievement unlock notifications:
+
+```tsx
+import { useAchievementToast, useAchievements } from './achievements';
+import { Toast } from './ui/toast';
+
+function AchievementNotifications() {
+  const { queue, dismiss } = useAchievementToast();
+  const { getDefinition } = useAchievements();
+
+  return (
+    <>
+      {queue.map(id => {
+        const def = getDefinition(id);
+        return (
+          <Toast
+            key={id}
+            title={def?.label}
+            description={def?.description}
+            onClose={() => dismiss(id)}
+          />
+        );
+      })}
+    </>
+  );
+}
+```
+
+**Returns:** `{ queue: ReadonlyArray<TId>, dismiss: (id: TId) => void }`
+
+### useTamperDetected()
+
+Detect when stored data fails integrity checks:
+
+```tsx
+import { useTamperDetected } from './achievements';
+import { Provider } from './achievements';
+
+function App() {
+  const tamperKey = useTamperDetected();
+
+  if (tamperKey !== null) {
+    return (
+      <div className="error-page">
+        <h1>Data Integrity Error</h1>
+        <p>Storage key "{tamperKey}" has been tampered with.</p>
+        <p>Your achievement data has been reset.</p>
+      </div>
+    );
+  }
+
+  return (
+    <Provider>
+      <MainApp />
+    </Provider>
+  );
+}
+```
+
+This hook works in both cases:
+- Tamper detected at module load (before React mounted)
+- Tamper detected at runtime during normal operation
+
+## Complete Example
+
+Here's a real-world example from the library's demo app:
+
+### achievements.ts
+
+```typescript
+import { defineAchievements, createAchievements, localStorageAdapter } from 'achievements-react';
+
+export const definitions = defineAchievements([
+  {
+    id: "first-visit",
+    label: "First Contact",
+    description: "Initialized session for the first time.",
+  },
+  {
+    id: "returning",
+    label: "Persistent Agent",
+    description: "Returned for a subsequent session.",
+  },
+  {
+    id: "night-owl",
+    label: "Night Protocol",
+    description: "Operating between 00:00 and 05:00.",
+    hidden: true,
+  },
+  {
+    id: "scanner",
+    label: "Network Scanner",
+    description: "Scanned 2 unique network nodes.",
+    maxProgress: 2,
+  },
+]);
+
+export type AchievementId = (typeof definitions)[number]["id"];
+
+export const {
+  engine,
+  Provider,
+  useAchievements,
+  useIsUnlocked,
+  useProgress,
+  useAchievementToast,
+  useUnlockedCount,
+  useTamperDetected,
+} = createAchievements<AchievementId>({
+  definitions,
+  storage: localStorageAdapter('achievements-demo'),
+});
+```
+
+### SessionInit.tsx
+
+```tsx
+import { useEffect } from 'react';
+import { useAchievements, engine } from './achievements';
+
+export function SessionInit() {
+  const { unlock } = useAchievements();
+
+  useEffect(() => {
+    // Check if user is returning (achievement already unlocked)
+    const isReturning = engine.isUnlocked('first-visit');
+
+    unlock('first-visit');
+
+    if (isReturning) {
+      unlock('returning');
+    }
+    
+    if (new Date().getHours() < 5) {
+      unlock('night-owl');
+    }
+  }, [unlock]);
+
+  return null;
+}
+```
+
+### NodeScanner.tsx
+
+```tsx
+import { useEffect, useState } from 'react';
+import { engine, useAchievements, useIsUnlocked, useProgress } from './achievements';
+
+const NODES = [
+  { id: 'node-alpha', label: 'Alpha Node' },
+  { id: 'node-beta', label: 'Beta Node' },
+];
+
+export function NodeScanner() {
+  const { collectItem } = useAchievements();
+  const { progress } = useProgress('scanner');
+  const unlocked = useIsUnlocked('scanner');
+  
+  // Initialize from persisted state
+  const [scanned, setScanned] = useState<Set<string>>(
+    () => new Set(engine.getItems('scanner'))
+  );
+
+  function scan(nodeId: string) {
+    if (scanned.has(nodeId)) return;
+    
+    collectItem('scanner', nodeId);
+    setScanned(prev => new Set(prev).add(nodeId));
+  }
+
+  return (
+    <div>
+      <h2>Network Scanner ({progress} / 2)</h2>
+      
+      {NODES.map(node => (
+        <button
+          key={node.id}
+          onClick={() => scan(node.id)}
+          disabled={scanned.has(node.id) || unlocked}
+        >
+          {node.label} {scanned.has(node.id) && '✓'}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+### App.tsx
+
+```tsx
+import { Provider, useTamperDetected } from './achievements';
+import { SessionInit } from './SessionInit';
+import { NodeScanner } from './NodeScanner';
+import { AchievementToasts } from './AchievementToasts';
+
+function Layout() {
+  return (
+    <div>
+      <SessionInit />
+      <NodeScanner />
+      <AchievementToasts />
+    </div>
+  );
+}
+
+export default function App() {
+  const tamperKey = useTamperDetected();
+
+  if (tamperKey !== null) {
+    return <div>Data tampered with: {tamperKey}</div>;
+  }
+
+  return (
+    <Provider>
+      <Layout />
+    </Provider>
+  );
+}
+```
+
+## Direct Engine Access
+
+You can also use the engine directly outside of React components:
+
+```typescript
+import { engine } from './achievements';
+
+// Use anywhere in your app
+engine.unlock('first-visit');
+
+if (engine.isUnlocked('night-owl')) {
+  console.log('Night owl achievement unlocked!');
+}
+
+// Subscribe to changes
+const unsubscribe = engine.subscribe((state) => {
+  console.log('State updated:', state);
+});
+```
+
+## Performance Optimization
+
+The hooks use selector-based subscriptions to minimize re-renders:
+
+- `useIsUnlocked(id)` - Only re-renders when that specific achievement's lock state changes
+- `useProgress(id)` - Only re-renders when that specific achievement's progress changes
+- `useUnlockedCount()` - Only re-renders when the total count changes
+- `useAchievementToast()` - Only re-renders when the toast queue changes
+
+This means you can use multiple hooks in the same component without performance concerns:
+
+```tsx
+function MultiTracker() {
+  const frenzyUnlocked = useIsUnlocked('click-frenzy');
+  const explorerUnlocked = useIsUnlocked('explorer');
+  const { progress: frenzyProgress } = useProgress('click-frenzy');
+  const { progress: explorerProgress } = useProgress('explorer');
+  
+  // Only re-renders when one of these 4 values changes
+  // Not on every achievement state change
+}
+```
+
+## TypeScript Support
+
+The factory pattern provides full type safety:
+
+```typescript
+export type AchievementId = (typeof definitions)[number]["id"];
+// Type: "first-visit" | "returning" | "night-owl" | "click-frenzy" | "scanner"
+
+const { useIsUnlocked, useProgress, useAchievements } = createAchievements<AchievementId>(...);
+
+// ✓ Type-safe
+useIsUnlocked('first-visit');
+
+// ✗ TypeScript error
+useIsUnlocked('invalid-id');
+```
+
+## Next Steps
+
+- [Vanilla JS Guide](/guides/vanilla-js) - Use the core package without React
+- [Custom Storage Guide](/guides/custom-storage) - Implement custom storage backends
+- [Custom Hash Guide](/guides/custom-hash) - Use custom hashing for tamper detection
