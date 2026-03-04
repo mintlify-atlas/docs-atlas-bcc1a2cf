@@ -1,0 +1,114 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Achievements Manager",
+  "projectDescription": "Type-safe achievement tracking for web apps with tiny core and optional React bindings",
+  "theme": "palm",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/achievements",
+              "concepts/progress-tracking",
+              "concepts/anti-cheat",
+              "concepts/storage-adapters"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/vanilla-js",
+              "guides/react-integration",
+              "guides/custom-storage",
+              "guides/custom-hash"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Package",
+            "pages": [
+              "api/core/create-achievements",
+              "api/core/achievement-engine",
+              "api/core/define-achievements",
+              "api/core/storage-adapters",
+              "api/core/hash-adapters",
+              "api/core/types"
+            ]
+          },
+          {
+            "group": "React Package",
+            "pages": [
+              "api/react/create-achievements",
+              "api/react/provider",
+              "api/react/use-achievements",
+              "api/react/use-is-unlocked",
+              "api/react/use-progress",
+              "api/react/use-achievement-toast",
+              "api/react/use-unlocked-count"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Additional Resources",
+            "pages": [
+              "resources/examples",
+              "resources/migration-guide",
+              "resources/changelog",
+              "resources/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Type-safe achievement IDs inferred from definitions",
+    "Zero runtime dependencies in core package",
+    "Auto-unlock on progress threshold",
+    "Anti-cheat with integrity checking",
+    "Pluggable storage and hash adapters",
+    "Fine-grained React hooks"
+  ],
+  "publicApiSurface": [
+    "createAchievements",
+    "defineAchievements",
+    "localStorageAdapter",
+    "inMemoryAdapter",
+    "fnv1aHashAdapter",
+    "AchievementEngine.unlock",
+    "AchievementEngine.setProgress",
+    "AchievementEngine.incrementProgress",
+    "AchievementEngine.collectItem",
+    "AchievementEngine.setMaxProgress",
+    "AchievementEngine.isUnlocked",
+    "AchievementEngine.getProgress",
+    "AchievementEngine.getItems",
+    "useAchievements",
+    "useIsUnlocked",
+    "useProgress",
+    "useAchievementToast",
+    "useUnlockedCount"
+  ]
+}
